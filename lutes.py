@@ -210,10 +210,11 @@ class LuteType2(Lute):
 		self.spine = geo.line(self.form_top, self.form_center)
 		self.centerline = geo.perpendicular_line(self.spine, self.form_center)
 
-		self.waist = geo.circle_by_center_and_radius(self.form_center, self.unit)
-		(self.form_side, self.waist_5) = geo.intersection(self.waist, self.centerline)
-		self.waist_2 = geo.midpoint(self.form_side, self.form_center)
-		self.waist_4 = geo.midpoint(self.form_center, self.waist_5)
+		self.form_side = geo.translate_point_y(self.form_center, -2 * self.unit)
+		self.waist_2 = geo.translate_point_y(self.form_center, - self.unit)
+		# self.form_center
+		self.waist_4 = geo.translate_point_y(self.form_center, self.unit)
+		self.waist_5 = geo.translate_point_y(self.form_center, 2 * self.unit)
 
 	def _make_top_arc_circle(self):
 		self.top_arc_center = geo.reflect(self.waist_4, self.waist_5)
