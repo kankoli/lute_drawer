@@ -74,8 +74,8 @@ class Lute(ABC):
 
 	def _make_template_points(self):
 		self.template_bottom_halving_point = geo.midpoint(self.bridge, self.form_bottom)
-		self.template_top = geo.translate_point_x(self.form_top, -self.eighth_unit)
-		self.template_bottom = geo.translate_point_x(self.form_bottom, self.eighth_unit)
+		self.template_top = geo.translate_point_x(self.form_top, -self.quarter_unit)
+		self.template_bottom = geo.translate_point_x(self.form_bottom, self.quarter_unit)
 		self.template_spine = geo.line(self.template_top, self.template_bottom)
 
 		self.template_points = [
@@ -91,7 +91,7 @@ class Lute(ABC):
 
 	def _make_template_lines(self):
 		self._make_template_points()
-		self.template_lines = [geo.perpendicular_segment(self.spine, geo.point(p.x, p.y - self.unit - self.half_unit)) for p in self.template_points]
+		self.template_lines = [geo.perpendicular_segment(self.spine, geo.point(p.x, p.y - 3 * self.unit)) for p in self.template_points]
 
 	def _make_template_objects(self):
 		self._make_template_lines()
@@ -193,19 +193,19 @@ class LuteType2(Lute):
 	"""
 
 	def _base_construction(self):
-		self.unit = 400 # Neck length, for Turkish Ouds
+		self.double_unit = 400 # Neck length, for Turkish Ouds
+		self.unit = self.double_unit / 2
 		self.half_unit = self.unit / 2
 		self.quarter_unit = self.half_unit / 2
-		self.eighth_unit = self.quarter_unit / 2
 
 		self.A = geo.point(75, 600)
-		self.B = geo.point(self.A.x+self.unit, self.A.y)
+		self.B = geo.point(self.A.x + self.double_unit, self.A.y) # A - B = neck length
 		self.form_top = geo.point(75, 500)
 
-		self.top_2 = geo.translate_point_x(self.form_top, self.half_unit)
-		self.top_3 = geo.translate_point_x(self.form_top, self.unit)
-		self.top_4 = geo.translate_point_x(self.form_top, self.unit + self.half_unit)
-		self.form_center = geo.translate_point_x(self.form_top, 2*self.unit)
+		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+		self.top_3 = geo.translate_point_x(self.form_top, 2 * self.unit)
+		self.top_4 = geo.translate_point_x(self.form_top, 3 * self.unit)
+		self.form_center = geo.translate_point_x(self.form_top, 4 * self.unit)
 
 		self.spine = geo.line(self.form_top, self.form_center)
 		self.centerline = geo.perpendicular_line(self.spine, self.form_center)
@@ -217,7 +217,7 @@ class LuteType2(Lute):
 
 	def _make_top_arc_circle(self):
 		self.top_arc_center = geo.reflect(self.waist_4, self.waist_5)
-		self.top_arc_radius = 2*self.unit + self.half_unit # Type 2
+		self.top_arc_radius = 5 * self.unit # Type 2
 		self.top_arc_circle = geo.circle_by_center_and_radius(self.top_arc_center, self.top_arc_radius)
 
 		return self.top_arc_circle	
@@ -227,13 +227,13 @@ class TurkishOud(Neck_DoubleGolden, LuteType2):
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
 
-		self.soundhole_center = geo.translate_point_x(self.point_neck_joint, self.unit)
-		self.bridge = geo.translate_point_x(self.soundhole_center, self.unit)
-		self.form_bottom = geo.translate_point_x(self.bridge, self.half_unit)
+		self.soundhole_center = geo.translate_point_x(self.point_neck_joint, 2 * self.unit)
+		self.bridge = geo.translate_point_x(self.soundhole_center, 2 * self.unit)
+		self.form_bottom = geo.translate_point_x(self.bridge, self.unit)
 	
 	@override
 	def _make_soundhole(self):
-		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.quarter_unit)
+		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.half_unit)
 		self._make_small_soundholes()
 
 	def _make_small_soundholes(self):
@@ -241,7 +241,7 @@ class TurkishOud(Neck_DoubleGolden, LuteType2):
 		soundholes_line = geo.perpendicular_line(self.spine, soundholes_axis_point)
 		self.small_soundhole_locator = geo.circle_by_center_and_point(soundholes_axis_point, self.form_center)
 		self.small_soundhole_centers = geo.intersection(self.small_soundhole_locator, soundholes_line)
-		self.small_soundhole_circles = [geo.circle_by_center_and_radius(x, self.eighth_unit) for x in self.small_soundhole_centers]
+		self.small_soundhole_circles = [geo.circle_by_center_and_radius(x, self.quarter_unit) for x in self.small_soundhole_centers]
 
 	@override
 	def _make_template_points(self):
@@ -267,11 +267,11 @@ class TurkishOudDoubleMiddleArcs(TurkishOud):
 	
 	@override
 	def _get_blender_radius(self):
-		return self.half_unit
+		return self.unit
 
 	@override
 	def _make_blender_side_circle(self):
-		self.second_arc_radius = self.unit
+		self.second_arc_radius = 2 * self.unit
 		self.second_arc_center = self.form_center
 		self.second_arc_circle = geo.circle_by_center_and_radius(self.second_arc_center, self.second_arc_radius) # Readily blended with top_arc_circle
 
@@ -289,17 +289,17 @@ class TurkishOudDoubleMiddleArcs(TurkishOud):
 class TurkishOudComplexLowerBout(TurkishOud):
 	"""
 	blender_radius, 			step_circle_radius, 		second_arc_center
-	self.half_unit, 			self.quarter_unit, 			connector x spine intersection (rounder)
-	3 * self.half_unit / 4, 	3 * self.half_unit / 4, 	connector x spine intersection
+	self.unit, 			self.half_unit, 			connector x spine intersection (rounder)
+	3 * self.unit / 4, 	3 * self.unit / 4, 	connector x spine intersection
 	"""
 	
 	@override
 	def _get_blender_radius(self):
-		return self.half_unit + self.quarter_unit
+		return self.unit + self.half_unit
 
 	@override
 	def _make_blender_side_circle(self):
-		self.step_circle = geo.circle_by_center_and_radius(self.form_side, 3 * self.half_unit / 4)
+		self.step_circle = geo.circle_by_center_and_radius(self.form_side, 3 * self.unit / 4)
 		step_intersections = geo.intersection(self.step_circle, self.top_arc_circle)
 		self.top_arc_finish = geo.pick_west_point(*step_intersections)
 
@@ -341,8 +341,8 @@ class IstanbulLavta(Neck_ThruTop2, Soundhole_OneThirdOfSegment, LuteType2):
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
 
-		self.top_6 = geo.translate_point_x(self.form_top, 2*self.unit + self.half_unit)
-		self.form_bottom = geo.translate_point_x(self.form_top, 3*self.unit)
+		self.top_6 = geo.translate_point_x(self.form_top, 5 * self.unit)
+		self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
 
 		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 4
 
@@ -351,11 +351,11 @@ class IstanbulLavta(Neck_ThruTop2, Soundhole_OneThirdOfSegment, LuteType2):
 
 	@override
 	def _get_blender_radius(self):
-		return 5*self.half_unit/4
+		return 5*self.unit/4
 
 	@override
 	def _make_blender_side_circle(self):
-		self.step_circle = geo.circle_by_center_and_radius(self.form_side, self.quarter_unit)
+		self.step_circle = geo.circle_by_center_and_radius(self.form_side, self.half_unit)
 		step_intersections = geo.intersection(self.step_circle, self.top_arc_circle)
 		self.top_arc_finish = geo.pick_south_point(*step_intersections)
 
