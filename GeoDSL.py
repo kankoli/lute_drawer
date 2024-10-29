@@ -305,47 +305,47 @@ class GeoDSL:
     def golden_ratio_divider(self, p1, p2):
         dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
         line_between = self.line(p1, p2)
-        GeoDSL.draw_point(dwg, p1)
-        GeoDSL.draw_point(dwg, p2)
+        # GeoDSL.draw_point(dwg, p1)
+        # GeoDSL.draw_point(dwg, p2)
         big_circle = self.circle_by_compass(p2, p1, p2)
         perpendicular_line = self.perpendicular_line(line_between, p2)
         big_intersection_point = self.intersection(big_circle, perpendicular_line)[0]
-        GeoDSL.draw_point(dwg, big_intersection_point)
-        GeoDSL.draw_circle(dwg, big_circle)
+        # GeoDSL.draw_point(dwg, big_intersection_point)
+        # GeoDSL.draw_circle(dwg, big_circle)
 
         midpoint = self.midpoint(big_intersection_point, p2)
-        GeoDSL.draw_point(dwg, midpoint)
+        # GeoDSL.draw_point(dwg, midpoint)
         small_circle = self.circle_by_center_and_point(midpoint, p2)
-        GeoDSL.draw_circle(dwg, small_circle)
+        # GeoDSL.draw_circle(dwg, small_circle)
 
         cross_line = self.line(midpoint, p1)
         cross_intersections = self.intersection(cross_line, small_circle)
 
         cross_intersection = self._pick_point_closest_to(p1, cross_intersections)
-        GeoDSL.draw_point(dwg, cross_intersection)
+        # GeoDSL.draw_point(dwg, cross_intersection)
         golden_circle = self.circle_by_center_and_point(p1, cross_intersection)
-        GeoDSL.draw_circle(dwg, golden_circle)
+        # GeoDSL.draw_circle(dwg, golden_circle)
         golden_intersections = self.intersection(line_between, golden_circle)
         golden_point = self._pick_point_closest_to(p2, golden_intersections)
-        GeoDSL.draw_point(dwg, golden_point)
+        # GeoDSL.draw_point(dwg, golden_point)
 
-        dwg.save()
+        # dwg.save()
 
         return golden_point
 
     def blend_two_circles(self, blender_radius, circle_1, circle_2):
-        dwg = svgwrite.Drawing(filename='output.svg', profile='tiny', size=(1400, 1100))
-        GeoDSL.draw_circle(dwg, circle_1)
-        GeoDSL.draw_circle(dwg, circle_2)
+        # dwg = svgwrite.Drawing(filename='test_output.svg', profile='tiny', size=(1400, 1100))
+        # GeoDSL.draw_circle(dwg, circle_1)
+        # GeoDSL.draw_circle(dwg, circle_2)
 
         helper_1_radius = circle_1.radius - blender_radius
         helper_1_circle = self.circle_by_center_and_radius(circle_1.center, helper_1_radius)
-        GeoDSL.draw_circle(dwg, helper_1_circle)
+        # GeoDSL.draw_circle(dwg, helper_1_circle)
         helper_2_radius = circle_2.radius - blender_radius
         helper_2_circle = self.circle_by_center_and_radius(circle_2.center, helper_2_radius)
-        GeoDSL.draw_circle(dwg, helper_2_circle)
+        # GeoDSL.draw_circle(dwg, helper_2_circle)
 
-        dwg.save()
+        # dwg.save()
         helper_circles_intersections = self.intersection(helper_1_circle, helper_2_circle)
 
         if helper_circles_intersections[0].y < helper_circles_intersections[1].y:
@@ -354,11 +354,11 @@ class GeoDSL:
             blender_center = helper_circles_intersections[1]
         blender_center = self.simple_point(blender_center)
 
-        GeoDSL.draw_point(dwg, blender_center)
+        # GeoDSL.draw_point(dwg, blender_center)
 
         blender_circle = self.circle_by_center_and_radius(blender_center, blender_radius+0.0000000001)
-        GeoDSL.draw_circle(dwg, blender_circle)
-        dwg.save()
+        # GeoDSL.draw_circle(dwg, blender_circle)
+        # dwg.save()
 
         blender_intersections_1 = self.intersection(blender_circle, circle_1)
         blender_intersections_2 = self.intersection(blender_circle, circle_2)
