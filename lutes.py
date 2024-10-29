@@ -456,16 +456,16 @@ class LavtaSmallThreeCourse(Soundhole_OneThirdOfSegment, Neck_ThruTop2, LuteType
 
 def main():
 	
-	oud = TurkishOudSingleMiddleArc()
-	oud = TurkishOudDoubleMiddleArcs()
-	oud = TurkishOudComplexLowerBout()
-	lavta = IstanbulLavta()
-	kucuk_lavta = LavtaSmallThreeCourse()
-	hoch_lavta = HochLavta()
-	
+	lutes = [ \
+		TurkishOudSingleMiddleArc(), \
+		TurkishOudDoubleMiddleArcs(), \
+		TurkishOudComplexLowerBout(), \
+		IstanbulLavta(), \
+		LavtaSmallThreeCourse(), \
+		HochLavta(), \
+		TurkishOudSingleMiddleArc() ]
 
-	lute = TurkishOudSingleMiddleArc()
-	lute.draw()
+	[lute.draw() for lute in lutes]
 
 if __name__ == '__main__':
     main()
