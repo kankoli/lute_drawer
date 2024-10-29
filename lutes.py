@@ -441,6 +441,11 @@ class HochLavta(Neck_ThruTop2, LuteType1):
 
 class LavtaSmallThreeCourse(Soundhole_OneThirdOfSegment, Neck_ThruTop2, LuteType1):
 	@override
+	def _make_soundhole(self):
+		self.soundhole_center = geo.midpoint(self.point_neck_joint, self.bridge)
+		super()._make_soundhole()
+
+	@override
 	def _get_blender_radius(self):
 		return float(self.soundhole_center.distance(self.waist_2))
 
