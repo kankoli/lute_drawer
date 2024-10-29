@@ -36,17 +36,17 @@ class GeoArc:
         """Draw the arc on the provided SVG drawing."""
         start_angle = np.deg2rad(self.angle1)
         end_angle = np.deg2rad(self.angle2)
-        
+
         start_point = (
             float(self.center.x) + float(self.radius) * np.cos(start_angle),
             size[1] - (float(self.center.y) + float(self.radius) * np.sin(start_angle))
         )
-        
+
         end_point = (
             float(self.center.x) + float(self.radius) * np.cos(end_angle),
             size[1] - (float(self.center.y) + float(self.radius) * np.sin(end_angle))
         )
-        
+
         # Ensure radius is evaluated correctly as a float
         radius_float = float(self.radius)
 
@@ -55,7 +55,7 @@ class GeoArc:
             d=f'M {start_point[0]} {start_point[1]} A {radius_float} {radius_float} 0 0 1 {end_point[0]} {end_point[1]}',
             fill='none', stroke='purple', stroke_width=1
         )
-        
+
         # Add the path to the drawing
         dwg.add(arc_path)
 
@@ -229,7 +229,7 @@ class GeoDSL:
         "Return true iff point c intersects the line segment from a to b."
         # (or the degenerate case that all 3 points are coincident)
         return (self.__points_are_collinear(a, b, c)
-                and (self.within(a.x, c.x, b.x) if a.x != b.x else 
+                and (self.within(a.x, c.x, b.x) if a.x != b.x else
                      self.within(a.y, c.y, b.y)))
 
     def __points_are_collinear(self, a, b, c):
@@ -320,7 +320,7 @@ class GeoDSL:
 
         cross_line = self.line(midpoint, p1)
         cross_intersections = self.intersection(cross_line, small_circle)
-        
+
         cross_intersection = self._pick_point_closest_to(p1, cross_intersections)
         GeoDSL.draw_point(dwg, cross_intersection)
         golden_circle = self.circle_by_center_and_point(p1, cross_intersection)

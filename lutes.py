@@ -174,19 +174,19 @@ class LuteType2(Lute):
 	"""
 																 waist_5
 
-																 ======= 
+																 =======
 
 																 waist_4
 
-																 ======= 
+																 =======
 
 	form_top ======= top_2 ======= top_3  ======= top_4 ======= form_center
 
-																 ======= 
+																 =======
 
 																 waist_2
 
-																 ======= 
+																 =======
 
 																 form_side
 
@@ -221,7 +221,7 @@ class LuteType2(Lute):
 		self.top_arc_radius = 5 * self.unit # Type 2
 		self.top_arc_circle = geo.circle_by_center_and_radius(self.top_arc_center, self.top_arc_radius)
 
-		return self.top_arc_circle	
+		return self.top_arc_circle
 
 class TurkishOud(Neck_DoubleGolden, LuteType2):
 	@override
@@ -231,7 +231,7 @@ class TurkishOud(Neck_DoubleGolden, LuteType2):
 		self.soundhole_center = geo.translate_point_x(self.point_neck_joint, 2 * self.unit)
 		self.bridge = geo.translate_point_x(self.soundhole_center, 2 * self.unit)
 		self.form_bottom = geo.translate_point_x(self.bridge, self.unit)
-	
+
 	@override
 	def _make_soundhole(self):
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.half_unit)
@@ -265,7 +265,6 @@ class TurkishOudSingleMiddleArc(TurkishOud):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
 class TurkishOudDoubleMiddleArcs(TurkishOud):
-	
 	@override
 	def _get_blender_radius(self):
 		return self.unit
@@ -290,10 +289,10 @@ class TurkishOudDoubleMiddleArcs(TurkishOud):
 class TurkishOudComplexLowerBout(TurkishOud):
 	"""
 	blender_radius, 			step_circle_radius, 		second_arc_center
-	self.unit, 			self.half_unit, 			connector x spine intersection (rounder)
-	3 * self.unit / 4, 	3 * self.unit / 4, 	connector x spine intersection
+	self.unit, 					self.half_unit, 			connector x spine intersection (rounder)
+	3 * self.unit / 4, 			3 * self.unit / 4, 			connector x spine intersection
 	"""
-	
+
 	@override
 	def _get_blender_radius(self):
 		return self.unit + self.half_unit
@@ -313,7 +312,7 @@ class TurkishOudComplexLowerBout(TurkishOud):
 		print ("divisions", self.divisions)
 		self.second_arc_center = self.divisions[0] # 3 /4 th
 		"""
-	
+
 		second_arc_radius = self.second_arc_center.distance(self.top_arc_finish)
 		self.second_arc_circle = geo.circle_by_center_and_radius(self.second_arc_center, second_arc_radius)
 
@@ -395,7 +394,7 @@ class LuteType1(Lute):
 
 		self.A = geo.point(75, 600)
 		self.B = geo.point(self.A.x+self.unit, self.A.y)
-		
+
 		self.top_arc_center = geo.point(400, 700)
 		self.waist_4 = geo.translate_point_y(self.top_arc_center, -self.unit)
 		self.form_center = geo.translate_point_y(self.top_arc_center, -2*self.unit)
@@ -455,7 +454,7 @@ class LavtaSmallThreeCourse(Soundhole_OneThirdOfSegment, Neck_ThruTop2, LuteType
 		self.helper_objects.extend([self.soundhole_perpendicular, *self.soundhole_segment_divisions])
 
 def main():
-	
+
 	lutes = [ \
 		TurkishOudSingleMiddleArc(), \
 		TurkishOudDoubleMiddleArcs(), \
