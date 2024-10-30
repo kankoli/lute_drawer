@@ -301,6 +301,21 @@ class GeoDSL:
             else:
                 return p2
 
+    def pick_east_point(self, p1, p2=None):
+        if p2 == None:
+            return p1
+
+        if p2.x > p1.x:
+            return p2
+        elif p2.x < p1.x:
+            return p1
+        else:
+            print("Warning when finding east point: both points have the same x. Picking the south point")
+            if p1.y < p2.y:
+                return p1
+            else:
+                return p2
+
 
     def golden_ratio_divider(self, p1, p2):
         dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
