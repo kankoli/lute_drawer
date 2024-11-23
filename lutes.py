@@ -46,11 +46,10 @@ class Neck_ThruTop2(Neck):
 	def _make_neck_joint_fret(self):
 		self._make_top_2_point()
 
-		print ("making neck joint")
 		helper_line = geo.line(self.top_2, self.top_arc_center)
-		helper_point = geo.intersection(helper_line, self.top_arc_circle)[0] # top intersection
+		helper_point = geo.pick_west_point(*geo.intersection(helper_line, self.top_arc_circle))
 		helper_circle = geo.circle_by_center_and_point(self.top_2, helper_point)
-		self.point_neck_joint = geo.intersection(helper_circle, self.spine)[0] # top intersection
+		self.point_neck_joint = geo.pick_west_point(*geo.intersection(helper_circle, self.spine))
 
 class Neck_DoubleGolden(Neck):
 	@abstractmethod
@@ -344,8 +343,8 @@ class Lute(ABC):
 		opposite_top_arc_center = geo.reflect(self.top_arc_center, self.form_center)
 		opposite_top_arc_circle = geo.circle_by_center_and_radius(opposite_top_arc_center, self.top_arc_radius)
 
-		intersection_left = geo.intersection(self.top_arc_circle, neck_line)[0]
-		intersection_right = geo.intersection(opposite_top_arc_circle, neck_line)[1]
+		intersection_left = geo.pick_south_point(*(geo.intersection(self.top_arc_circle, neck_line)))
+		intersection_right = geo.pick_north_point(*(geo.intersection(opposite_top_arc_circle, neck_line)))
 
 		neck_width = intersection_left.distance(intersection_right)
 
@@ -521,8 +520,6 @@ class TurkishOudComplexLowerBout(Blend_StepCircle, TurkishOud, Soundhole_HalfUni
 	def _get_blender_radius(self):
 		return self.unit + self.half_unit
 
-
-
 	@override
 	def _make_helper_objects(self):
 		super()._make_helper_objects()
@@ -621,7 +618,7 @@ class LuteType1(TopArc_Type1, Lute):
 	def _make_spine_points(self):
 		self.bridge = geo.translate_point_x(self.form_center, self.unit)
 		self.form_bottom = geo.reflect(self.form_center, self.bridge)
-		print("making spine")
+
 		self._make_neck_joint_fret()
 
 class HochLavta(Blend_Classic, LuteType1, Neck_ThruTop2):
@@ -632,16 +629,9 @@ class HochLavta(Blend_Classic, LuteType1, Neck_ThruTop2):
 		soundhole_radius = float(self.soundhole_center.distance(soundhole_helper_point))
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, soundhole_radius)
 
-		self.second_neck_joint = geo.reflect(self.bridge, self.soundhole_center)
-
 	@override
 	def _get_blender_radius(self):
 		return float(self.soundhole_center.distance(self.waist_2))
-
-	@override
-	def _make_full_view_objects(self):
-		super()._make_full_view_objects()
-		self.full_view_objects.append(self.second_neck_joint)
 
 class LavtaSmallThreeCourse(Blend_Classic, Soundhole_OneThirdOfSegment, LuteType1, Neck_ThruTop2):
 	@override
@@ -689,18 +679,12 @@ class Brussels0164(Blend_Classic, SmallSoundhole_Brussels0164, LuteType1):
 
 
 def test_all_lutes():
-	lutes = [ \
-		TurkishOudSingleMiddleArc(), \
-		TurkishOudDoubleMiddleArcs(), \
-		TurkishOudComplexLowerBout(), \
-		TurkishOudSoundholeThird(), \
-		IstanbulLavta(), \
-		HochLavta(), \
-		LavtaSmallThreeCourse(), \
-		HannaNahatOud(), \
-		Brussels0164(), \
-		Brussels0404()
-		]
+	lutes = []
+	# lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
+	lutes.extend([ lute() for lute in TurkishOud.__subclasses__() ])
+	lutes.extend([ IstanbulLavta(),IkwanAlSafaOud(), HannaNahatOud() ])
+	lutes.extend([ lute() for lute in LuteType3.__subclasses__() ])
+	lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
 
 	print("\n\n\n\n\n")
 	[lute.print_measurements() for lute in lutes]
@@ -711,9 +695,9 @@ def test_single_lute():
 	lute.print_measurements()
 
 def main():
-	# test_all_lutes()
+	test_all_lutes()
 
-	test_single_lute()
+	# test_single_lute()
 
 if __name__ == '__main__':
     main()

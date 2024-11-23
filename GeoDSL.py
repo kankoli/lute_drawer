@@ -273,6 +273,7 @@ class GeoDSL:
 
     def pick_south_point(self, p1, p2=None):
         if p2 == None:
+            print("Warning: only one argument passed to",pick_south_point)
             return p1
 
         if p2.y < p1.y:
@@ -286,8 +287,25 @@ class GeoDSL:
             else:
                 return p2
 
+    def pick_north_point(self, p1, p2=None):
+        if p2 == None:
+            print("Warning: only one argument passed to",pick_north_point)
+            return p1
+
+        if p2.y < p1.y:
+            return p1
+        elif p2.y > p1.y:
+            return p2
+        else:
+            print("Warning when finding northern point: both points have the same y. Picking the east point")
+            if p1.x > p2.x:
+                return p1
+            else:
+                return p2
+
     def pick_west_point(self, p1, p2=None):
         if p2 == None:
+            print("Warning: only one argument passed to", pick_west_point)
             return p1
 
         if p2.x < p1.x:
@@ -303,6 +321,7 @@ class GeoDSL:
 
     def pick_east_point(self, p1, p2=None):
         if p2 == None:
+            print("Warning: only one argument passed to",pick_east_point)
             return p1
 
         if p2.x > p1.x:
