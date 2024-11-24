@@ -315,8 +315,11 @@ class Lute(ABC):
 			("Unit:", self.unit),
 			("Form Width:", form_width),
 			("Form Length:", self.form_bottom.distance(self.form_top)),
-			("Scale (1/3-Neck):", (3 / 2) * self.point_neck_joint.distance(self.bridge)),
-			("Scale (Half-Neck):", 2 * self.point_neck_joint.distance(self.bridge)),
+			("Neck to Bottom:", self.form_bottom.distance(self.point_neck_joint)),
+			("(1/3-Neck) Scale:", (3 / 2) * self.point_neck_joint.distance(self.bridge)),
+			("(1/3-Neck) Neck length:", (1 / 2) * self.point_neck_joint.distance(self.bridge)),
+			("(Half-Neck) Scale:", 2 * self.point_neck_joint.distance(self.bridge)),
+			("(Half-Neck) Neck:", self.point_neck_joint.distance(self.bridge)),
 			("Neck-joint width:", self.__get_neck_joint_width())
 		]
 
@@ -687,16 +690,17 @@ def test_all_lutes():
 
 	print("\n\n\n\n\n")
 	[lute.print_measurements() for lute in lutes]
+	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = HochLavta()
+	lute = TurkishOudComplexLowerBout()
 	lute.draw()
 	lute.print_measurements()
 
 def main():
-	test_all_lutes()
+	# test_all_lutes()
 
-	# test_single_lute()
+	test_single_lute()
 
 if __name__ == '__main__':
     main()

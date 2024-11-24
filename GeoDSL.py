@@ -2,7 +2,7 @@ import svgwrite
 from sympy import Point, Circle, Line, Segment, nsimplify, intersection as sympy_intersection
 import numpy as np
 
-svg_size = [1400, 1100]
+svg_size = [1200, 900]
 
 class GeoArc:
     def __init__(self, center, p1, p2):
