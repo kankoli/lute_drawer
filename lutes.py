@@ -472,15 +472,25 @@ class LuteType2(TopArc_Type2, Lute):
 class TurkishOud(SmallSoundhole_Turkish, LuteType2, Neck_DoubleGolden):
 	@override
 	def _get_unit_length(self):
-		return 370 / 4
+		return 366 / 4
 
 	@override
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
 
-		self.soundhole_center = geo.translate_point_x(self.point_neck_joint, 2 * self.unit)
-		self.bridge = geo.translate_point_x(self.soundhole_center, 2 * self.unit)
-		self.form_bottom = geo.translate_point_x(self.bridge, self.unit)
+		""" Width of the soundboard (4 regular unit)
+		should be 3/4th of the segment from neck-joint to form-bottom
+		which is then divided into 5 and placing the bridge at 1 unit
+		and the soundhole at 3 units (half-way)
+
+		So, 4 regular units equals 3 /4 (5 vertical units), which means
+		1 vertical unit is equal to 16/15 regular unit
+		"""
+		self.vertical_unit = 16 * self.unit / 15
+
+		self.soundhole_center = geo.translate_point_x(self.point_neck_joint, 2 * self.vertical_unit)
+		self.bridge = geo.translate_point_x(self.soundhole_center, 2 * self.vertical_unit)
+		self.form_bottom = geo.translate_point_x(self.bridge, self.vertical_unit)
 
 class TurkishOudSingleMiddleArc(Blend_Classic, TurkishOud, Soundhole_HalfUnit):
 	@override
@@ -499,15 +509,15 @@ class TurkishOudDoubleMiddleArcs(Blend_SideCircle, TurkishOud, Soundhole_HalfUni
 class TurkishOudComplexLowerBout(Blend_StepCircle, TurkishOud, Soundhole_HalfUnit):
 	@override
 	def _get_step_circle_radius(self):
-		return 3 * self.unit / 4
+		return self.unit / 4
 
 	@override
 	def _get_step_circle_function(self):
-		return geo.pick_west_point
+		return geo.pick_east_point
 
 	@override
 	def _get_blender_radius(self):
-		return self.unit + self.half_unit
+		return self.unit
 
 	@override
 	def _make_helper_objects(self):
