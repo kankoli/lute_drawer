@@ -47,9 +47,9 @@ class Neck_ThruTop2(Neck):
 		self._make_top_2_point()
 
 		helper_line = geo.line(self.top_2, self.top_arc_center)
-		helper_point = geo.pick_west_point(*geo.intersection(helper_line, self.top_arc_circle))
+		helper_point = geo.pick_point_closest_to(self.form_top, geo.intersection(helper_line, self.top_arc_circle))
 		helper_circle = geo.circle_by_center_and_point(self.top_2, helper_point)
-		self.point_neck_joint = geo.pick_west_point(*geo.intersection(helper_circle, self.spine))
+		self.point_neck_joint = geo.pick_point_closest_to(self.form_top, geo.intersection(helper_circle, self.spine))
 
 class Neck_DoubleGolden(Neck):
 	@abstractmethod
@@ -81,8 +81,8 @@ class Soundhole_OneThirdOfSegment(Soundhole):
 		opposite_top_arc_circle = geo.circle_by_center_and_radius(opposite_top_arc_center, self.top_arc_radius)
 
 		self.soundhole_perpendicular = geo.perpendicular_line(self.spine, self.soundhole_center)
-		soundhole_perpendicular_left = geo.intersection(self.top_arc_circle, self.soundhole_perpendicular)[0] # Trial and error to find the right point of intersection
-		soundhole_perpendicular_right = geo.intersection(opposite_top_arc_circle, self.soundhole_perpendicular)[0] # Trial and error to find the right point of intersection
+		soundhole_perpendicular_left = geo.pick_point_closest_to(self.spine, geo.intersection(self.top_arc_circle, self.soundhole_perpendicular))
+		soundhole_perpendicular_right = geo.pick_point_closest_to(self.spine, geo.intersection(opposite_top_arc_circle, self.soundhole_perpendicular))
 		self.soundhole_segment_divisions = geo.divide_distance(soundhole_perpendicular_left, soundhole_perpendicular_right, 3) # Mark soundhole diameter
 
 		soundhole_radius = self.soundhole_segment_divisions[0].distance(self.soundhole_segment_divisions[1]) / 2
@@ -191,12 +191,8 @@ class Blend_StepCircle(Blend_WithCircle):
 		pass
 
 	@abstractmethod
-	def _get_step_circle_function(self):
+	def _get_step_circle_intersection(self, points):
 		pass
-
-	def _get_step_circle_intersection(self, intersections):
-		func = self._get_step_circle_function()
-		return func(*intersections)
 
 	@override
 	def _make_blender_side_circle(self):
@@ -335,8 +331,8 @@ class Lute(ABC):
 		opposite_top_arc_center = geo.reflect(self.top_arc_center, self.form_center)
 		opposite_top_arc_circle = geo.circle_by_center_and_radius(opposite_top_arc_center, self.top_arc_radius)
 
-		intersection_left = geo.pick_south_point(*(geo.intersection(self.top_arc_circle, neck_line)))
-		intersection_right = geo.pick_north_point(*(geo.intersection(opposite_top_arc_circle, neck_line)))
+		intersection_left = geo.pick_point_closest_to(self.spine,geo.intersection(self.top_arc_circle, neck_line))
+		intersection_right = geo.pick_point_closest_to(self.spine, geo.intersection(opposite_top_arc_circle, neck_line))
 
 		neck_width = intersection_left.distance(intersection_right)
 
@@ -421,9 +417,9 @@ class Brussels0404(Blend_Classic, LuteType3):
 	def _make_spine_points(self):
 		half_vesica_piscis_circle = geo.circle_by_center_and_radius(self.waist_2, 2*self.unit)
 		vesica_piscis_intersections = geo.intersection(self.spine, half_vesica_piscis_circle)
-		self.form_bottom = geo.pick_east_point(*vesica_piscis_intersections)
+		self.form_bottom = geo.pick_point_furthest_from(self.form_top, vesica_piscis_intersections)
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.unit)
-		self.soundhole_center = geo.pick_west_point(*vesica_piscis_intersections)
+		self.soundhole_center = geo.pick_point_closest_to(self.form_top, vesica_piscis_intersections)
 
 	@override
 	def _make_soundhole(self):
@@ -515,8 +511,8 @@ class TurkishOudComplexLowerBout(Blend_StepCircle, TurkishOud, Soundhole_HalfUni
 		return self.unit / 4
 
 	@override
-	def _get_step_circle_function(self):
-		return geo.pick_east_point
+	def _get_step_circle_intersection(self, points):
+		return geo.pick_point_furthest_from(self.form_top, points)
 
 	@override
 	def _get_blender_radius(self):
@@ -557,8 +553,8 @@ class IstanbulLavta(Blend_StepCircle, Soundhole_OneThirdOfSegment, LuteType2, Ne
 		return self.unit / 2
 
 	@override
-	def _get_step_circle_function(self):
-		return geo.pick_east_point
+	def _get_step_circle_intersection(self, points):
+		return geo.pick_point_furthest_from(self.form_top, points)
 
 	@override
 	def _get_blender_radius(self):
@@ -655,9 +651,9 @@ class Brussels0164(Blend_Classic, SmallSoundhole_Brussels0164, LuteType1):
 	def _make_spine_points(self):
 		half_vesica_piscis_circle = geo.circle_by_center_and_radius(self.waist_2, 2*self.unit)
 		vesica_piscis_intersections = geo.intersection(self.spine, half_vesica_piscis_circle)
-		self.form_bottom = geo.pick_east_point(*vesica_piscis_intersections)
+		self.form_bottom = geo.pick_point_furthest_from(self.form_top, vesica_piscis_intersections)
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.unit)
-		self.soundhole_top = geo.pick_west_point(*vesica_piscis_intersections)
+		self.soundhole_top = geo.pick_point_closest_to(self.form_top, vesica_piscis_intersections)
 
 		# bogus to keep _make_template_points happy
 		self.top_2, self.top_4 = self.soundhole_top, geo.midpoint(self.form_bottom, self.soundhole_top)

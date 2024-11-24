@@ -2,7 +2,7 @@ import svgwrite
 from sympy import Point, Circle, Line, Segment, nsimplify, intersection as sympy_intersection
 import numpy as np
 
-svg_size = [1200, 900]
+svg_size = [1300, 900]
 
 class GeoArc:
     def __init__(self, center, p1, p2):
@@ -240,7 +240,7 @@ class GeoDSL:
         "Return true iff q is between p and r (inclusive)."
         return p <= q <= r or r <= q <= p
 
-    def _pick_point_closest_to(self, reference, lst):
+    def pick_point_closest_to(self, reference, lst):
         minimum_distance = lst[0].distance(reference)
         closest_point = lst[0]
 
@@ -251,6 +251,18 @@ class GeoDSL:
                 closest_point = p
 
         return closest_point
+
+    def pick_point_furthest_from(self, reference, lst):
+        maximum_distance = lst[0].distance(reference)
+        furthest_point = lst[0]
+
+        for p in lst:
+            dst = p.distance(reference)
+            if maximum_distance < dst:
+                maximum_distance = dst
+                furthest_point = p
+
+        return furthest_point
 
     def _pick_point_between(self, lst, p1, p2):
         # NOT SAFE
@@ -355,12 +367,12 @@ class GeoDSL:
         cross_line = self.line(midpoint, p1)
         cross_intersections = self.intersection(cross_line, small_circle)
 
-        cross_intersection = self._pick_point_closest_to(p1, cross_intersections)
+        cross_intersection = self.pick_point_closest_to(p1, cross_intersections)
         # GeoDSL.draw_point(dwg, cross_intersection)
         golden_circle = self.circle_by_center_and_point(p1, cross_intersection)
         # GeoDSL.draw_circle(dwg, golden_circle)
         golden_intersections = self.intersection(line_between, golden_circle)
-        golden_point = self._pick_point_closest_to(p2, golden_intersections)
+        golden_point = self.pick_point_closest_to(p2, golden_intersections)
         # GeoDSL.draw_point(dwg, golden_point)
 
         # dwg.save()
