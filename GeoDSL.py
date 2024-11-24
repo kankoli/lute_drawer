@@ -264,57 +264,6 @@ class GeoDSL:
 
         return furthest_point
 
-    def _pick_point_between(self, lst, p1, p2):
-        # NOT SAFE
-        print("pick point in between")
-
-        print ("lst", lst)
-        print ("lst length: ", len(lst))
-
-        print ("p1", p1)
-
-        print ("p2", p2)
-        for p in lst:
-            if ((p1.x <= p.x <= p2.x) or \
-                (p1.x >= p.x >= p2.x)) and \
-                ((p1.y <= p.y <= p2.y) or \
-                (p1.y >= p.y >= p2.y)):
-                print("point picked", p)
-                return p
-        print("Warning: no points are between")
-
-    def pick_south_point(self, p1, p2=None):
-        if p2 == None:
-            print("Warning: only one argument passed to",pick_south_point)
-            return p1
-
-        if p2.y < p1.y:
-            return p2
-        elif p2.y > p1.y:
-            return p1
-        else:
-            print("Warning when finding southern point: both points have the same y. Picking the east point")
-            if p1.x > p2.x:
-                return p1
-            else:
-                return p2
-
-    def pick_north_point(self, p1, p2=None):
-        if p2 == None:
-            print("Warning: only one argument passed to",pick_north_point)
-            return p1
-
-        if p2.y < p1.y:
-            return p1
-        elif p2.y > p1.y:
-            return p2
-        else:
-            print("Warning when finding northern point: both points have the same y. Picking the east point")
-            if p1.x > p2.x:
-                return p1
-            else:
-                return p2
-
     def pick_west_point(self, p1, p2=None):
         if p2 == None:
             print("Warning: only one argument passed to", pick_west_point)
@@ -330,23 +279,6 @@ class GeoDSL:
                 return p1
             else:
                 return p2
-
-    def pick_east_point(self, p1, p2=None):
-        if p2 == None:
-            print("Warning: only one argument passed to",pick_east_point)
-            return p1
-
-        if p2.x > p1.x:
-            return p2
-        elif p2.x < p1.x:
-            return p1
-        else:
-            print("Warning when finding east point: both points have the same x. Picking the south point")
-            if p1.y < p2.y:
-                return p1
-            else:
-                return p2
-
 
     def golden_ratio_divider(self, p1, p2):
         dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
