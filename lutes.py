@@ -66,7 +66,6 @@ class Neck_DoubleGolden(Neck):
 class Neck_Quartered(Neck):
 	@override
 	def _make_neck_joint_fret(self):
-		# 7th fret location for ouds
 		self.point_neck_joint = geo.translate_point_x(self.form_top, self.quarter_unit)
 
 
@@ -184,8 +183,6 @@ class Blend_SideCircle(Blend_WithCircle):
 		second_arc_radius = self._get_side_circle_radius()
 		second_arc_center = geo.translate_point_y(self.form_side, second_arc_radius)
 		self.side_circle = geo.circle_by_center_and_radius(second_arc_center, second_arc_radius) # Readily blended with top_arc_circle
-
-		self.side_circle = geo.circle_by_center_and_radius(second_arc_center, second_arc_radius) # Readily blended with top_arc_circle
 		self.top_arc_finish = self.form_side # Shortcut to intersection of the top circle and side circle
 
 class Blend_StepCircle(Blend_WithCircle):
@@ -211,12 +208,6 @@ class Blend_StepCircle(Blend_WithCircle):
 		self.connector_1 = geo.line(self.top_arc_finish, self.top_arc_center)
 		self.connector_intersections = geo.intersection(self.connector_1, self.spine)
 		second_arc_center = self.connector_intersections[0] # single intersection
-		"""
-		print ("two points", self.second_arc_center, self.top_arc_finish)
-		self.divisions = geo.divide_distance(self.second_arc_center, self.top_arc_finish, 4)
-		print ("divisions", self.divisions)
-		self.second_arc_center = self.divisions[0] # 3 /4 th
-		"""
 
 		second_arc_radius = second_arc_center.distance(self.top_arc_finish)
 		self.side_circle = geo.circle_by_center_and_radius(second_arc_center, second_arc_radius)
@@ -309,29 +300,27 @@ class Lute(ABC):
 		self._make_full_view_objects()
 		self.__dump_full_view()
 
-	def __get_unit_conversion_ratio(self):
-		return self._get_unit_length() / self.unit
-
 	def print_measurements(self):
 		print(37 * "=")
 		print(f"{type(self).__name__:<30} in mms")
 
 		# Top width is 4 * unit, unless the blending narrows it by falling towards the top
+		# TODO: Could there a larger blender towards the bottom?
 		if (self.blender_intersection_1.x < self.form_side.x):
-			top_width = 2 * self.blender_intersection_1.distance(self.spine)
+			form_width = 2 * self.blender_intersection_1.distance(self.spine)
 		else:
-			top_width = 2 * self.form_side.distance(self.spine)
+			form_width = 2 * self.form_side.distance(self.spine)
 
 		measurements = [
 			("Unit:", self.unit),
-			("Top Width:", top_width),
-			("Top Length:", self.form_bottom.distance(self.point_neck_joint)),
+			("Form Width:", form_width),
+			("Form Length:", self.form_bottom.distance(self.form_top)),
 			("Scale (1/3-Neck):", (3 / 2) * self.point_neck_joint.distance(self.bridge)),
 			("Scale (Half-Neck):", 2 * self.point_neck_joint.distance(self.bridge)),
 			("Neck-joint width:", self.__get_neck_joint_width())
 		]
 
-		convert = self.__get_unit_conversion_ratio()
+		convert = self._get_unit_length() / self.unit
 
 		[print(f"{measurement_name:<30} {convert * measurement_value:.2f}") \
 			for (measurement_name, measurement_value) in measurements]
