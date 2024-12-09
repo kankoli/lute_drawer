@@ -1,5 +1,5 @@
 import svgwrite
-from sympy import Point, Circle, Line, Segment, nsimplify, intersection as sympy_intersection
+from sympy import Point, Circle, Line, Segment, intersection as sympy_intersection
 import numpy as np
 
 svg_size = [1300, 900]
@@ -241,6 +241,9 @@ class GeoDSL:
         return p <= q <= r or r <= q <= p
 
     def pick_point_closest_to(self, reference, lst):
+        # turn points into simple points for perfomance
+        lst = [self.simple_point(p) for p in lst]
+
         minimum_distance = lst[0].distance(reference)
         closest_point = lst[0]
 
