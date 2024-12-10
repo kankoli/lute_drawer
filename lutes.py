@@ -638,18 +638,46 @@ class HannaNahatOud(Blend_SideCircle, Soundhole_ThreeQuarters, LuteType2, Neck_Q
 
 
 class LuteType1(TopArc_Type1, Lute):
-	@override
-	def _make_top_2_point(self):
-		self.top_2, self.top_3, self.top_4 = geo.divide_distance(self.form_top, self.form_center, 4)
+	"""
+	Based on a vesica pisces construction. form_top is the top vesica pisces point.
+	top_3 is the top point of a half-sized vesica pisces, and form_bottom is the bottom point.
 
+									form_top
+
+
+									top_2
+
+
+									top_3
+
+
+									top_4
+
+
+	form_size		<2 units>		form_center 	<2 units> arc_center (radius = 4 units)
+
+
+									bridge (sometimes)
+
+
+									form_bottom
+	"""
 	@override
 	def _make_spine_points(self):
-		self.bridge = geo.translate_point_x(self.form_center, self.unit)
-		self.form_bottom = geo.reflect(self.form_center, self.bridge)
+		# Dividing the distance by 4 and getting the top_3 is a shortcut to
+		# creating a second, half-sized vesica pisces
+		self.top_2, self.top_3, self.top_4 = geo.divide_distance(self.form_top, self.form_center, 4)
 
-		self._make_neck_joint_fret()
+		# Following the double vesica pisces construction...
+		self.form_bottom = geo.reflect(self.top_3, self.form_center)
+		self.bridge = geo.reflect(self.top_4, self.form_center)
 
 class HochLavta(Blend_Classic, LuteType1, Neck_ThruTop2):
+	@override
+	def _make_top_2_point(self):
+		# top_2 is already made within base _make_spine_points
+		pass
+
 	@override
 	def _make_soundhole(self):
 		soundhole_helper_point = geo.midpoint(self.top_4, self.form_center)
@@ -657,13 +685,30 @@ class HochLavta(Blend_Classic, LuteType1, Neck_ThruTop2):
 		soundhole_radius = float(self.soundhole_center.distance(soundhole_helper_point))
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, soundhole_radius)
 
+		self._make_neck_joint_fret()
+
 	@override
 	def _get_blender_radius(self):
 		return float(self.soundhole_center.distance(self.waist_2))
 
+	@override
+	def _make_helper_objects(self):
+		super()._make_helper_objects()
+		experimental_neck_joint = geo.reflect(self.bridge, self.soundhole_center)
+		self.helper_objects.extend([experimental_neck_joint])
+
+		converter = self._get_unit_length() / self.unit
+		Lute.print_meaurement("Neck at experimental point", converter * self.get_form_width_at_point(experimental_neck_joint))
+
 class LavtaSmallThreeCourse(Blend_Classic, Soundhole_OneThirdOfSegment, LuteType1, Neck_ThruTop2):
 	@override
+	def _make_top_2_point(self):
+		# top_2 is already made within base _make_spine_points
+		pass
+
+	@override
 	def _make_soundhole(self):
+		self._make_neck_joint_fret()
 		self.soundhole_center = geo.midpoint(self.point_neck_joint, self.bridge)
 		super()._make_soundhole()
 
@@ -679,22 +724,19 @@ class LavtaSmallThreeCourse(Blend_Classic, Soundhole_OneThirdOfSegment, LuteType
 class Brussels0164(Blend_Classic, SmallSoundhole_Brussels0164, LuteType1):
 	@override
 	def _make_spine_points(self):
-		half_vesica_piscis_circle = geo.circle_by_center_and_radius(self.waist_2, 2*self.unit)
-		vesica_piscis_intersections = geo.intersection(self.spine, half_vesica_piscis_circle)
-		self.form_bottom = geo.pick_point_furthest_from(self.form_top, vesica_piscis_intersections)
-		self.bridge = geo.translate_point_x(self.form_bottom, -self.unit)
-		self.soundhole_top = geo.pick_point_closest_to(self.form_top, vesica_piscis_intersections)
+		super()._make_spine_points()
 
-		# bogus to keep _make_template_points happy
-		self.top_2, self.top_4 = self.soundhole_top, geo.midpoint(self.form_bottom, self.soundhole_top)
+		self.bridge = geo.translate_point_x(self.form_bottom, -self.unit)
+		self.soundhole_top = self.top_3
+		self.soundhole_center = geo.divide_distance(self.soundhole_top, self.form_center, 3)[0]
+
+		self._make_neck_joint_fret()
 
 	@override
 	def _make_soundhole(self):
-		self.soundhole_center = geo.divide_distance(self.soundhole_top, self.form_center, 3)[0]
 		self.soundhole_radius = self.soundhole_top.distance(self.soundhole_center)
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.soundhole_radius)
 
-		self._make_neck_joint_fret()
 		self._make_small_soundholes()
 
 	@override
