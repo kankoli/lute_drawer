@@ -104,6 +104,11 @@ class Soundhole_HalfUnit(Soundhole):
 	def _make_soundhole(self):
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.half_unit)
 
+class Soundhole_ThreeQuarters(Soundhole):
+	@override
+	def _make_soundhole(self):
+		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, 3 * self.unit / 4)
+
 
 class SmallSoundhole(ABC):
 	@override
@@ -603,7 +608,7 @@ class IkwanAlSafaOud(Blend_Classic, LuteType2, Neck_Quartered, Soundhole_HalfUni
 	def _get_blender_radius(self):
 		return 2*self.unit
 
-class HannaNahatOud(Blend_SideCircle, LuteType2, Neck_Quartered):
+class HannaNahatOud(Blend_SideCircle, Soundhole_ThreeQuarters, LuteType2, Neck_Quartered):
 	@override
 	def _get_unit_length(self):
 		return 365/4
@@ -615,12 +620,6 @@ class HannaNahatOud(Blend_SideCircle, LuteType2, Neck_Quartered):
 		self.bridge = geo.translate_point_x(self.form_center, 3 * self.unit / 4)
 		self.form_bottom = geo.translate_point_x(self.bridge, self.unit)
 		self.soundhole_center = geo.midpoint(self.bridge, self.point_neck_joint)
-
-	@override
-	def _make_soundhole(self):
-		bridge_reflected = geo.reflect(self.bridge, self.form_center)
-		self.soundhole_radius = bridge_reflected.distance(self.soundhole_center)
-		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.soundhole_radius)
 
 	@override
 	def _get_side_circle_radius(self):
