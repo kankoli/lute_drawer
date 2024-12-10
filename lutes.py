@@ -497,7 +497,7 @@ class LuteType2(TopArc_Type2, Lute):
 
 	"""
 
-class TurkishOud(SmallSoundhole_Turkish, LuteType2, Neck_DoubleGolden):
+class TurkishOud(LuteType2, Neck_DoubleGolden):
 	@override
 	def _get_unit_length(self):
 		return 366 / 4
@@ -520,12 +520,12 @@ class TurkishOud(SmallSoundhole_Turkish, LuteType2, Neck_DoubleGolden):
 		self.bridge = geo.translate_point_x(self.soundhole_center, 2 * self.vertical_unit)
 		self.form_bottom = geo.translate_point_x(self.bridge, self.vertical_unit)
 
-class TurkishOudSingleMiddleArc(Blend_Classic, TurkishOud, Soundhole_HalfUnit):
+class TurkishOudSingleMiddleArc(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
-class TurkishOudDoubleMiddleArcs(Blend_SideCircle, TurkishOud, Soundhole_HalfUnit):
+class TurkishOudDoubleMiddleArcs(Blend_SideCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
 	def _get_blender_radius(self):
 		return self.unit
@@ -534,7 +534,7 @@ class TurkishOudDoubleMiddleArcs(Blend_SideCircle, TurkishOud, Soundhole_HalfUni
 	def _get_side_circle_radius(self):
 		return 2*self.unit
 
-class TurkishOudComplexLowerBout(Blend_StepCircle, TurkishOud, Soundhole_HalfUnit):
+class TurkishOudComplexLowerBout(Blend_StepCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
 	def _get_step_circle_radius(self):
 		return self.unit / 4
@@ -555,7 +555,7 @@ class TurkishOudComplexLowerBout(Blend_StepCircle, TurkishOud, Soundhole_HalfUni
 		self.helper_objects.append(self.top_arc_finish)
 		self.helper_objects.append(self.connector_intersections[0])
 
-class TurkishOudSoundholeThird(Blend_Classic, TurkishOud, Soundhole_OneThirdOfSegment):
+class TurkishOudSoundholeThird(Blend_Classic, SmallSoundhole_Turkish, Soundhole_OneThirdOfSegment, TurkishOud):
 	@override
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
@@ -595,7 +595,7 @@ class IstanbulLavta(Blend_StepCircle, Soundhole_OneThirdOfSegment, LuteType2, Ne
 		self.helper_objects.extend([self.connector_1, self.step_circle])
 		self.helper_objects.extend([self.soundhole_perpendicular, *self.soundhole_segment_divisions])
 
-class IkwanAlSafaOud(Blend_Classic, LuteType2, Neck_Quartered, Soundhole_HalfUnit):
+class IkwanAlSafaOud(Blend_Classic, Soundhole_HalfUnit, LuteType2, Neck_Quartered):
 	@override
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
