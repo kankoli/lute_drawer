@@ -234,6 +234,10 @@ class Blend_StepCircle(Blend_WithCircle):
 
 
 class Lute(ABC):
+	@staticmethod
+	def print_meaurement(measurement_name, value):
+		print(f"{measurement_name:<30} {value:.2f}")
+
 	def __init__(self):
 		self._base_construction()
 
@@ -313,7 +317,7 @@ class Lute(ABC):
 
 	def print_measurements(self):
 		print(37 * "=")
-		print(f"{type(self).__name__:<30} in mms")
+		print(f"{type(self).__name__:<30} mm")
 
 		# Top width is 4 * unit, unless the blending narrows it by falling towards the top
 		# TODO: Could there a larger blender towards the bottom?
@@ -336,22 +340,22 @@ class Lute(ABC):
 
 		convert = self._get_unit_length() / self.unit
 
-		[print(f"{measurement_name:<30} {convert * measurement_value:.2f}") \
+		[Lute.print_meaurement(measurement_name, convert * measurement_value) \
 			for (measurement_name, measurement_value) in measurements]
 
 		print(37 * "=")
 
 	def __get_neck_joint_width(self):
-		neck_line = geo.perpendicular_line(self.spine, self.point_neck_joint)
-		opposite_top_arc_center = geo.reflect(self.top_arc_center, self.form_center)
-		opposite_top_arc_circle = geo.circle_by_center_and_radius(opposite_top_arc_center, self.top_arc_radius)
+		return self.get_form_width_at_point(self.point_neck_joint)
 
-		intersection_left = geo.pick_point_closest_to(self.spine,geo.intersection(self.top_arc_circle, neck_line))
-		intersection_right = geo.pick_point_closest_to(self.spine, geo.intersection(opposite_top_arc_circle, neck_line))
+	def get_form_width_at_point(self, point):
+		perpendicular_line = geo.perpendicular_line(self.spine, point)
 
-		neck_width = intersection_left.distance(intersection_right)
+		arc_intersection = geo.pick_point_closest_to(self.spine,geo.intersection(self.top_arc_circle, perpendicular_line))
 
-		return neck_width
+		width_at_point = 2 * point.distance(arc_intersection)
+
+		return width_at_point
 
 	def _make_template_points(self):
 		self.template_bottom_halving_point = geo.midpoint(self.bridge, self.form_bottom)
