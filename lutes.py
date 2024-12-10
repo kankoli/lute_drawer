@@ -31,6 +31,10 @@ class TopArc_Type3(TopArc):
 	def _get_top_arc_radius(self):
 		return 6 * self.unit
 
+class TopArc_Type10(TopArc):
+	@override
+	def _get_top_arc_radius(self):
+		return 13 * self.unit
 
 class Neck(ABC):
 	@abstractmethod
@@ -73,6 +77,12 @@ class Soundhole(ABC):
 	@abstractmethod
 	def _make_soundhole(self):
 		pass
+
+class NoSoundhole(Soundhole):
+	@override
+	def _make_soundhole(self):
+		self.soundhole_center = None
+		self.soundhole_circle = None
 
 class Soundhole_OneThirdOfSegment(Soundhole):
 	@override
@@ -350,10 +360,12 @@ class Lute(ABC):
 			self.point_neck_joint, \
 			self.form_center, \
 			self.bridge, \
-			self.soundhole_center, \
 			self.form_bottom, self.template_bottom_halving_point, \
 			self.template_bottom, \
 		]
+
+		if self.soundhole_center is not None:
+			self.template_points.append(self.soundhole_center)
 
 	def _make_template_lines(self):
 		self._make_template_points()
@@ -364,10 +376,12 @@ class Lute(ABC):
 
 		self.template_objects = [
 			self.A, self.B, \
-			self.soundhole_circle, \
 			self.template_spine, \
 			*self.final_arcs
 		]
+
+		if self.soundhole_circle is not None:
+			self.template_objects.append(self.soundhole_circle)
 
 		self.template_objects.extend(self.template_lines)
 
@@ -386,9 +400,14 @@ class Lute(ABC):
 		    self.point_neck_joint, \
 		    self.top_arc_circle, self.bottom_arc_circle, self.side_circle, \
 		    self.blender_intersection_1, self.blender_intersection_2, self.blender_circle, \
-			self.soundhole_center, self.soundhole_circle, \
 		    self.bridge
 	    ]
+
+		if self.soundhole_circle is not None:
+			self.helper_objects.append(self.soundhole_circle)
+
+		if self.soundhole_center is not None:
+			self.helper_objects.append(self.soundhole_center)
 
 	@final
 	def __dump_helper(self):
@@ -399,11 +418,16 @@ class Lute(ABC):
 		    self.A, self.B, \
 		    self.form_top, self.form_center, self.form_bottom, self.form_side, \
 		    self.point_neck_joint, \
-		    self.soundhole_circle, self.soundhole_center, \
 		    self.bridge, \
 		    *self.final_arcs, \
 		    *self.final_reflected_arcs
 	    ]
+
+		if self.soundhole_circle is not None:
+			self.full_view_objects.append(self.soundhole_circle)
+
+		if self.soundhole_center is not None:
+			self.full_view_objects.append(self.soundhole_center)
 
 	@final
 	def __dump_full_view(self):
@@ -674,6 +698,28 @@ class Brussels0164(Blend_Classic, SmallSoundhole_Brussels0164, LuteType1):
 	@override
 	def _get_blender_radius(self):
 		return float(self.soundhole_center.distance(self.form_center))
+
+
+class LuteType10(TopArc_Type10, Lute):
+	@override
+	def _make_top_2_point(self):
+		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+
+	@override
+	def _make_spine_points(self):
+		self.bridge = geo.translate_point_x(self.form_center, self.unit)
+		self.form_bottom = geo.reflect(self.form_center, self.bridge)
+
+		self._make_neck_joint_fret()
+
+class BaltaSaz(Blend_Classic, NoSoundhole, LuteType10, Neck_ThruTop2):
+	@override
+	def _get_blender_radius(self):
+		return self.unit
+
+	@override
+	def _get_unit_length(self):
+		return 200/4
 
 
 def test_all_lutes():
