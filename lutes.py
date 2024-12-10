@@ -396,7 +396,10 @@ class Lute(ABC):
 
 	@final
 	def __get_file_name_prefix(self):
-		return os.path.basename(type(self).__name__)
+		output_dir = "output"
+		if not os.path.exists(output_dir):
+			os.mkdir(output_dir)
+		return output_dir + "/" + type(self).__name__
 
 	@final
 	def __dump_template(self):
