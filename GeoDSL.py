@@ -284,6 +284,10 @@ class GeoDSL:
                 return p2
 
     def golden_ratio_divider(self, p1, p2):
+        """
+        Dividing towards p2:
+        p1 ---------- G ----- p2
+        """
         dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
         line_between = self.line(p1, p2)
         # GeoDSL.draw_point(dwg, p1)

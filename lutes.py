@@ -70,6 +70,8 @@ class Neck_DoubleGolden(Neck):
 class Neck_Quartered(Neck):
 	@override
 	def _make_neck_joint_fret(self):
+		self._make_top_2_point()
+
 		self.point_neck_joint = geo.translate_point_x(self.form_top, self.quarter_unit)
 
 
@@ -95,18 +97,20 @@ class Soundhole_OneThirdOfSegment(Soundhole):
 		soundhole_perpendicular_right = geo.pick_point_closest_to(self.spine, geo.intersection(opposite_top_arc_circle, self.soundhole_perpendicular))
 		self.soundhole_segment_divisions = geo.divide_distance(soundhole_perpendicular_left, soundhole_perpendicular_right, 3) # Mark soundhole diameter
 
-		soundhole_radius = self.soundhole_segment_divisions[0].distance(self.soundhole_segment_divisions[1]) / 2
-		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, soundhole_radius)
+		self.soundhole_radius = self.soundhole_segment_divisions[0].distance(self.soundhole_segment_divisions[1]) / 2
+		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.soundhole_radius)
 		super()._make_soundhole()
 
 class Soundhole_HalfUnit(Soundhole):
 	@override
 	def _make_soundhole(self):
+		self.soundhole_radius = self.half_unit
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.half_unit)
 
 class Soundhole_ThreeQuarters(Soundhole):
 	@override
 	def _make_soundhole(self):
+		self.soundhole_radius = 3 * self.unit / 4
 		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, 3 * self.unit / 4)
 
 
@@ -138,11 +142,11 @@ class SmallSoundhole(ABC):
 class SmallSoundhole_Turkish(SmallSoundhole):
 	@override
 	def _make_small_soundholes(self):
-		soundholes_axis_point = bridge_soundhole_midpoint = geo.midpoint(self.soundhole_center, self.form_center)
+		soundholes_axis_point = geo.midpoint(self.soundhole_center, self.form_center)
 		soundholes_line = geo.perpendicular_line(self.spine, soundholes_axis_point)
 		self.small_soundhole_locator = geo.circle_by_center_and_point(soundholes_axis_point, self.form_center)
 		self.small_soundhole_centers = geo.intersection(self.small_soundhole_locator, soundholes_line)
-		self.small_soundhole_circles = [geo.circle_by_center_and_radius(x, self.quarter_unit) for x in self.small_soundhole_centers]
+		self.small_soundhole_circles = [geo.circle_by_center_and_radius(x, self.soundhole_radius/2) for x in self.small_soundhole_centers]
 
 class SmallSoundhole_Brussels0164(SmallSoundhole):
 	@override
@@ -474,10 +478,6 @@ class Brussels0404(Blend_Classic, LuteType3):
 
 
 class LuteType2(TopArc_Type2, Lute):
-	@override
-	def _make_top_2_point(self):
-		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
-
 	"""
 																top_arc_center
 
@@ -503,6 +503,98 @@ class LuteType2(TopArc_Type2, Lute):
 																 form_side
 
 	"""
+
+	@override
+	def _make_top_2_point(self):
+		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+		self.top_3 = geo.translate_point_x(self.form_top, 2 * self.unit)
+		self.top_4 = geo.translate_point_x(self.form_top, 3 * self.unit)
+
+
+class VesicaPiscesOud(Blend_Classic, SmallSoundhole_Turkish, TopArc_Type2, Neck_DoubleGolden, Lute):
+	@override
+	def _get_unit_length(self):
+		return 366 / 4
+
+	@override
+	def _make_top_2_point(self):
+		# top_2 is already made within _make_spine_points
+		pass
+
+	@override
+	def _make_spine_points(self):
+		# Dividing the distance by 4 and getting the top_3 is a shortcut to
+		# creating a half-sized vesica pisces
+		self.top_2, self.top_3, self.top_4 = geo.divide_distance(self.form_top, self.form_center, 4)
+
+		self.form_bottom = geo.reflect(self.top_3, self.form_center)
+		self.bridge = geo.reflect(self.top_4, self.form_center)
+
+		self.soundhole_top = self.top_3
+		self.soundhole_center = geo.divide_distance(self.soundhole_top, self.form_center, 3)[0]
+
+		self._make_neck_joint_fret()
+
+	@override
+	def _make_soundhole(self):
+		soundhole_helper_point = geo.midpoint(self.top_3, self.form_center)
+		self.soundhole_center = geo.midpoint(self.top_3, soundhole_helper_point)
+		self.soundhole_radius = float(self.soundhole_center.distance(soundhole_helper_point))
+		self.soundhole_circle = geo.circle_by_center_and_radius(self.soundhole_center, self.soundhole_radius)
+
+		self._make_neck_joint_fret()
+
+		self._make_small_soundholes()
+
+	@override
+	def _get_blender_radius(self):
+		return self.unit
+
+	@override
+	def _make_helper_objects(self):
+		super()._make_helper_objects()
+		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
+
+class TurkishOud2(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, LuteType2, Neck_Quartered):
+	""" Attempt to construct without a vertical unit
+		Placing the neck joint first,
+		then placing the soundhole center at midpoint of top_3 and top_4 (experimentation needed).
+		Neck joint to soundhole center becomes X. Then the bridge and the form_bottom could be set.
+
+		Reference: Eren Ozek's Turkish Oud proportions
+		https://www.mikeouds.com/messageboard/files.php?pid=78208&aid=17317
+
+		P.S. The problem with the reference proportions is that it doesn't
+		inform on how the neck joint is placed. I'll experiment with the neck
+		classes I got...
+	"""
+	@override
+	def _get_unit_length(self):
+		return 366 / 4 # Form width in mm / 4
+
+	@override
+	def _make_spine_points(self):
+		self._make_neck_joint_fret()
+
+		# self.soundhole_center = geo.midpoint(self.top_3, self.top_4)
+		# self.soundhole_center = geo.golden_ratio_divider(self.form_top, self.form_center)
+		# self.soundhole_center = geo.midpoint(self.top_2, self.form_center)
+		self.soundhole_center = geo.golden_ratio_divider(self.top_4, self.top_3)
+
+		vertical_X = self.point_neck_joint.distance(self.soundhole_center)
+		# Neck to form bottom is said to be X + X + 0.5 X
+		self.bridge = geo.translate_point_x(self.soundhole_center, vertical_X)
+		self.form_bottom = geo.translate_point_x(self.bridge, vertical_X / 2)
+
+	@override
+	def _get_blender_radius(self):
+		return self.small_soundhole_centers[0].distance(self.soundhole_center)
+
+	@override
+	def _make_helper_objects(self):
+		super()._make_helper_objects()
+		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
+
 
 class TurkishOud(LuteType2, Neck_DoubleGolden):
 	@override
@@ -561,6 +653,8 @@ class TurkishOudComplexLowerBout(Blend_StepCircle, SmallSoundhole_Turkish, Sound
 		self.helper_objects.append(self.top_arc_center)
 		self.helper_objects.append(self.top_arc_finish)
 		self.helper_objects.append(self.connector_intersections[0])
+
+		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
 class TurkishOudSoundholeThird(Blend_Classic, SmallSoundhole_Turkish, Soundhole_OneThirdOfSegment, TurkishOud):
 	@override
@@ -772,25 +866,27 @@ class BaltaSaz(Blend_Classic, NoSoundhole, LuteType10, Neck_ThruTop2):
 
 def test_all_lutes():
 	lutes = []
-	# lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
 	lutes.extend([ lute() for lute in TurkishOud.__subclasses__() ])
 	lutes.extend([ IstanbulLavta(),IkwanAlSafaOud(), HannaNahatOud() ])
 	lutes.extend([ lute() for lute in LuteType3.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
+	lutes.extend([ TurkishOud2() ])
 
 	print("\n\n\n\n\n")
 	[lute.print_measurements() for lute in lutes]
 	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = TurkishOudComplexLowerBout()
+	lute = TurkishOud2()
 	lute.draw()
 	lute.print_measurements()
 
 def main():
-	# test_all_lutes()
-
-	test_single_lute()
+	testing_all = 1
+	if testing_all == 1:
+		test_all_lutes()
+	else:
+		test_single_lute()
 
 if __name__ == '__main__':
     main()
