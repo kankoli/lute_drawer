@@ -118,6 +118,18 @@ class Soundhole_ThreeQuarters(Soundhole):
 	def _get_soundhole_radius(self):
 		return 3 * self.unit / 4
 
+class NoSoundhole(Soundhole):
+	@override
+	def _make_soundhole(self):
+		pass
+
+	@override
+	def _get_soundhole_center(self):
+		pass
+
+	@override
+	def _get_soundhole_radius(self):
+		pass
 
 class SmallSoundhole(ABC):
 	@override
@@ -277,7 +289,7 @@ class Lute(ABC):
 		return 100 # dummy value
 
 	def _get_unit_display_size(self):
-		return 100
+		return 200
 
 	def _base_construction(self):
 		self.unit = self._get_unit_display_size() #  1/4th of the belly
@@ -428,7 +440,7 @@ class Lute(ABC):
 			*self.final_arcs
 		]
 
-		if self.soundhole_circle is not None:
+		if hasattr(self, 'soundhole_circle'):
 			self.template_objects.append(self.soundhole_circle)
 
 		self.template_objects.extend(self.template_lines)
@@ -454,7 +466,7 @@ class Lute(ABC):
 		    self.bridge
 	    ]
 
-		if self.soundhole_circle is not None:
+		if hasattr(self, 'soundhole_circle'):
 			self.helper_objects.append(self.soundhole_circle)
 
 		soundhole_center = self._get_soundhole_center()
@@ -475,7 +487,7 @@ class Lute(ABC):
 		    *self.final_reflected_arcs
 	    ]
 
-		if self.soundhole_circle is not None:
+		if hasattr(self, 'soundhole_circle'):
 			self.full_view_objects.append(self.soundhole_circle)
 
 		soundhole_center = self._get_soundhole_center()
@@ -845,6 +857,10 @@ class Brussels0164(Blend_Classic, SmallSoundhole_Brussels0164, LuteType1):
 
 class LuteType10(TopArc_Type10, Lute):
 	@override
+	def _get_unit_display_size(self):
+		return 100
+
+	@override
 	def _make_top_2_point(self):
 		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
 
@@ -855,7 +871,7 @@ class LuteType10(TopArc_Type10, Lute):
 
 		self._make_neck_joint_fret()
 
-class BaltaSaz(BlendWith_Unit, Blend_Classic, LuteType10, Neck_ThruTop2):
+class BaltaSaz(NoSoundhole, BlendWith_Unit, Blend_Classic, LuteType10, Neck_ThruTop2):
 	@override
 	def _get_unit_in_mm(self):
 		return 200/4
@@ -867,6 +883,7 @@ def test_all_lutes():
 	lutes.extend([ IstanbulLavta(),IkwanAlSafaOud(), HannaNahatOud() ])
 	lutes.extend([ lute() for lute in LuteType3.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
+	lutes.extend([ lute() for lute in LuteType10.__subclasses__() ])
 	lutes.extend([ TurkishOud2() ])
 
 	print("\n\n\n\n\n")
@@ -874,7 +891,7 @@ def test_all_lutes():
 	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = TurkishOud2()
+	lute = BaltaSaz()
 	lute.draw()
 	lute.print_measurements()
 
