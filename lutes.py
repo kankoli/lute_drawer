@@ -285,7 +285,7 @@ class Lute(ABC):
 		self.A = geo.point(150, 600)
 		self.B = geo.point(self.A.x + self.unit, self.A.y)
 
-		self.form_center = geo.point(1000, 500)
+		self.form_center = geo.point(700, 500)
 		self.waist_2 = geo.translate_point_y(self.form_center, -self.unit)
 		self.form_side = geo.translate_point_y(self.form_center, -2 * self.unit)
 
