@@ -260,6 +260,11 @@ class BlendWith_Unit(BlendWith):
 	def _get_blender_radius(self):
 		return self.unit
 
+class BlendWith_OneAndHalfUnit(BlendWith):
+	@override
+	def _get_blender_radius(self):
+		return 1.5 * self.unit
+
 class BlendWith_DoubleUnit(BlendWith):
 	@override
 	def _get_blender_radius(self):
@@ -289,7 +294,7 @@ class Lute(ABC):
 		return 100 # dummy value
 
 	def _get_unit_display_size(self):
-		return 200
+		return 150
 
 	def _base_construction(self):
 		self.unit = self._get_unit_display_size() #  1/4th of the belly
@@ -871,7 +876,7 @@ class LuteType10(TopArc_Type10, Lute):
 
 		self._make_neck_joint_fret()
 
-class BaltaSaz(NoSoundhole, BlendWith_Unit, Blend_Classic, LuteType10, Neck_ThruTop2):
+class BaltaSaz(NoSoundhole, BlendWith_OneAndHalfUnit, Blend_Classic, LuteType10, Neck_ThruTop2):
 	@override
 	def _get_unit_in_mm(self):
 		return 200/4
@@ -896,7 +901,7 @@ def test_single_lute():
 	lute.print_measurements()
 
 def main():
-	testing_all = 1
+	testing_all = 0
 	if testing_all == 1:
 		test_all_lutes()
 	else:
