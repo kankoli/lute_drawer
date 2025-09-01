@@ -80,7 +80,7 @@ class Neck_Quartered(Neck):
 	def _make_neck_joint_fret(self):
 		self._make_top_2_point()
 
-		self.point_neck_joint = geo.translate_point_x(self.form_top, self.quarter_unit)
+		self.point_neck_joint = geo.translate_point_x(self.form_top, self.unit / 4)
 
 class SoundholeAt(ABC):
 	@abstractmethod
@@ -111,7 +111,7 @@ class Soundhole_OneThirdOfSegment(Soundhole):
 class Soundhole_HalfUnit(Soundhole):
 	@override
 	def _get_soundhole_radius(self):
-		return self.half_unit
+		return self.unit / 2
 
 class Soundhole_ThreeQuarters(Soundhole):
 	@override
@@ -276,11 +276,11 @@ class Lute(ABC):
 		"""
 		return 100 # dummy value
 
+	def _get_unit_display_size(self):
+		return 100
+
 	def _base_construction(self):
-		self.double_unit = 300
-		self.unit = self.double_unit / 2 #  1/4th of the belly
-		self.half_unit = self.unit / 2
-		self.quarter_unit = self.half_unit / 2
+		self.unit = self._get_unit_display_size() #  1/4th of the belly
 
 		self.A = geo.point(150, 600)
 		self.B = geo.point(self.A.x + self.unit, self.A.y)
@@ -397,8 +397,8 @@ class Lute(ABC):
 
 	def _make_template_points(self):
 		self.template_bottom_halving_point = geo.midpoint(self.bridge, self.form_bottom)
-		self.template_top = geo.translate_point_x(self.form_top, -self.quarter_unit)
-		self.template_bottom = geo.translate_point_x(self.form_bottom, self.quarter_unit)
+		self.template_top = geo.translate_point_x(self.form_top, -self.unit / 4)
+		self.template_bottom = geo.translate_point_x(self.form_bottom, self.unit / 4)
 		self.template_spine = geo.line(self.template_top, self.template_bottom)
 
 		self.template_points = [
@@ -485,6 +485,7 @@ class Lute(ABC):
 	@final
 	def __dump_full_view(self):
 		GeoDSL.draw_svg(self.full_view_objects, self.__get_file_name_prefix() + '_full_view.svg')
+
 
 class LuteType3(TopArc_Type3, Lute):
 	pass
