@@ -270,7 +270,7 @@ class Lute(ABC):
 		self._make_arcs()
 		self.__generate_arcs()
 
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		""" In mm's.
 		It will be used to when printing measurements.
 		"""
@@ -376,7 +376,7 @@ class Lute(ABC):
 			("Neck-joint width:", self.__get_neck_joint_width())
 		]
 
-		convert = self._get_unit_length() / self.unit
+		convert = self._get_unit_in_mm() / self.unit
 
 		[Lute.print_meaurement(measurement_name, convert * measurement_value) \
 			for (measurement_name, measurement_value) in measurements]
@@ -548,7 +548,7 @@ class LuteType2(TopArc_Type2, Lute):
 
 class VesicaPiscesOud(BlendWith_Unit, Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, TopArc_Type2, Neck_DoubleGolden, Lute):
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 366 / 4
 
 	@override
@@ -590,7 +590,7 @@ class TurkishOud2(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, Lut
 		classes I got...
 	"""
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 366 / 4 # Form width in mm / 4
 
 	@override
@@ -621,7 +621,7 @@ class TurkishOud2(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, Lut
 
 class TurkishOud(LuteType2, Neck_DoubleGolden):
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 366 / 4
 
 	@override
@@ -688,7 +688,7 @@ class TurkishOudSoundholeThird(Blend_Classic, SmallSoundhole_Turkish, Soundhole_
 
 class IstanbulLavta(Blend_StepCircle, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_ThruTop2):
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 300 / 4
 
 	@override
@@ -720,7 +720,7 @@ class IkwanAlSafaOud(BlendWith_DoubleUnit, Blend_Classic, Soundhole_HalfUnit, So
 
 class HannaNahatOud(Blend_SideCircle, Soundhole_ThreeQuarters, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_Quartered):
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 365/4
 
 	@override
@@ -803,7 +803,7 @@ class HochLavta(Blend_Classic, LuteType1, Neck_ThruTop2):
 		experimental_neck_joint = geo.reflect(self.bridge, self._get_soundhole_center())
 		self.helper_objects.extend([experimental_neck_joint])
 
-		converter = self._get_unit_length() / self.unit
+		converter = self._get_unit_in_mm() / self.unit
 		Lute.print_meaurement("Neck at experimental point", converter * self.get_form_width_at_point(experimental_neck_joint))
 
 class LavtaSmallThreeCourse(BlendWith_Unit, Blend_Classic, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType1, Neck_ThruTop2):
@@ -857,7 +857,7 @@ class LuteType10(TopArc_Type10, Lute):
 
 class BaltaSaz(BlendWith_Unit, Blend_Classic, LuteType10, Neck_ThruTop2):
 	@override
-	def _get_unit_length(self):
+	def _get_unit_in_mm(self):
 		return 200/4
 
 
