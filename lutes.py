@@ -657,7 +657,7 @@ class TurkishOud2_3(BlendWith_Unit, Blend_StepCircle, TurkishOud2):
 		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
 
-class TurkishOud(LuteType2, Neck_DoubleGolden):
+class TurkishOud(LuteType2, Neck_Quartered):
 	@override
 	def _get_unit_in_mm(self):
 		return 366 / 4
