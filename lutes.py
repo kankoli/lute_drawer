@@ -593,7 +593,7 @@ class VesicaPiscesOud(BlendWith_Unit, Blend_Classic, SmallSoundhole_Turkish, Sou
 		super()._make_helper_objects()
 		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
-class TurkishOud2(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, LuteType2, Neck_Quartered):
+class TurkishOud2(SmallSoundhole_Turkish, Soundhole_HalfUnit, LuteType2, Neck_Quartered):
 	""" Attempt to construct without a vertical unit
 		Placing the neck joint first,
 		then placing the soundhole center at midpoint of top_3 and top_4 (experimentation needed).
@@ -627,12 +627,33 @@ class TurkishOud2(Blend_Classic, SmallSoundhole_Turkish, Soundhole_HalfUnit, Lut
 		self.form_bottom = geo.translate_point_x(self.bridge, vertical_X / 2)
 
 	@override
+	def _make_helper_objects(self):
+		super()._make_helper_objects()
+		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
+
+class TurkishOud2_1(Blend_Classic, TurkishOud2):
+	@override
 	def _get_blender_radius(self):
 		return self.small_soundhole_centers[0].distance(self._get_soundhole_center())
+
+class TurkishOud2_2(BlendWith_Unit, Blend_SideCircle, TurkishOud2):
+	@override
+	def _get_side_circle_radius(self):
+		return 2*self.unit
+
+class TurkishOud2_3(BlendWith_Unit, Blend_StepCircle, TurkishOud2):
+	@override
+	def _get_step_circle_radius(self):
+		return self.unit / 4
 
 	@override
 	def _make_helper_objects(self):
 		super()._make_helper_objects()
+		self.helper_objects.extend([self.connector_1, self.step_circle])
+		self.helper_objects.append(self.top_arc_center)
+		self.helper_objects.append(self.top_arc_finish)
+		self.helper_objects.append(self.connector_intersections[0])
+
 		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
 
@@ -889,7 +910,7 @@ def test_all_lutes():
 	lutes.extend([ lute() for lute in LuteType3.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType10.__subclasses__() ])
-	lutes.extend([ TurkishOud2() ])
+	lutes.extend([ lute() for lute in TurkishOud2.__subclasses__() ])
 
 	print("\n\n\n\n\n")
 	[lute.print_measurements() for lute in lutes]
