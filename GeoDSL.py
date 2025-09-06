@@ -1,3 +1,4 @@
+import warnings
 import svgwrite
 import svgutils
 from sympy import Point, Circle, Line, Segment, intersection as sympy_intersection
@@ -319,6 +320,45 @@ class GeoDSL:
 
         return golden_point
 
+    def get_tangent_circle(self, circle, line, radius, closest_point, inner=True):
+        '''
+        Given a line and a circle, creates a new circle, with
+        a given radius, that is tangential at the intersection point
+        closest to a given point.
+
+        The given line should pass through the center of the given
+        circle. Otherwise, a warning is thrown.
+
+        inner parameter sets whether the new circle should be inside or
+        outside the given circle. True by default.
+
+        Returns the new circle and its intersection with the given circle.
+
+        '''
+        if not self.intersection(circle.center, line):
+            warnings.warn("Calculating tangent circle with a non-radial line", Warning, stacklevel=2)
+
+        dwg = svgwrite.Drawing(filename='tangent_output.svg', profile='tiny', size=(1400, 1100))
+        GeoDSL.draw_circle(dwg, circle)
+        GeoDSL.draw_point(dwg, circle.center)
+        GeoDSL.draw_line(dwg, line)
+
+        intersections = self.intersection(circle, line)
+        intersection = self.pick_point_closest_to(closest_point, intersections)
+
+        helper_circle = self.circle_by_center_and_radius(intersection, radius)
+        helper_intersections = self.intersection(helper_circle, line)
+        if inner:
+            new_circle_center = self.pick_point_closest_to(circle.center, helper_intersections)
+        else:
+            new_circle_center = self.pick_point_furthest_from(circle.center, helper_intersections)
+
+        new_circle = self.circle_by_center_and_radius(new_circle_center, radius)
+        GeoDSL.draw_circle(dwg, new_circle)
+        dwg.save()
+        return new_circle, intersection
+
+
     def blend_two_circles(self, blender_radius, circle_1, circle_2):
         dwg = svgwrite.Drawing(filename='blend_output.svg', profile='tiny', size=(1400, 1100))
         GeoDSL.draw_circle(dwg, circle_1)
@@ -334,6 +374,11 @@ class GeoDSL:
         dwg.save()
         helper_circles_intersections = self.intersection(helper_1_circle, helper_2_circle)
 
+        ''' TODO: don't attempt to pick the right intersection here.
+        Return two sets of blend circle and points instead and leave
+        it to the caller to deduct the right blending circle. Or take
+        a 'closest_point' parameter to resolve it.
+        '''
         if helper_circles_intersections[0].y < helper_circles_intersections[1].y:
             blender_center = helper_circles_intersections[0]
         else:

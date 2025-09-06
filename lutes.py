@@ -193,6 +193,49 @@ class SmallSoundhole_Brussels0164(SmallSoundhole):
 		self.small_soundhole_circles = [geo.circle_by_center_and_radius(x, self._get_soundhole_radius() / 4) for x in self.small_soundhole_centers]
 
 
+class TangentParameter(ABC):
+	def __init__(self, line, radius, closest_point):
+		self.line = line
+		self.radius = radius
+		self.closest_point = closest_point
+
+class LowerArcBuilder(ABC):
+	''' Superclass for building lower arcs of a lute,
+	connecting the top arc to the lower arc.
+
+	Subclasses define the parameter sets to create tangential
+	arcs and a final circle-to-circle blender-circle.
+	'''
+	def __build(self):
+		circle_1 = self.top_arc_circle
+		circle_2 = self.bottom_arc_circle
+
+		current_circle = circle_1
+		tangent_circles = []
+		tangent_points = []
+		for tp in self._get_tangent_parameters():
+			tangent_circle, tangent_point = GeoDSL.get_tangent_circle(current_circle, tp.line, tb.radius, tp.closest_point, True)
+			tangent_circles.append(tangent_circle)
+			tangent_points.append(tangent_point)
+
+			current_circle = tangent_circle
+
+		blender_circle, blender_intersection_1, blender_intersection_2 = geo.blend_two_circles(self._get_blender_radius(), current_circle, circle_2)
+		tangent_circles.append(blender_circle)
+		tangent_points.append(blender_intersection_1)
+		tangent_points.append(blender_intersection_2)
+
+		self.tangent_circles = tangent_circles
+		self.tangent_points = tangent_points
+
+	@abstractmethod
+	def _get_tangent_parameters(self):
+		pass
+
+	@abstractmethod
+	def _get_blender_radius(self):
+		pass
+
 class CircleBlender(ABC):
 	@abstractmethod
 	def _make_blender_side_circle(self):
