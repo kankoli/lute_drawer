@@ -120,8 +120,8 @@ class Soundhole_GoldenRatiofOfSegment(Soundhole):
 		self.soundhole_perpendicular = geo.perpendicular_line(self.spine, self._get_soundhole_center())
 		soundhole_perpendicular_intersection = geo.pick_point_closest_to(self.spine, geo.intersection(self.top_arc_circle, self.soundhole_perpendicular))
 
-		halfsegment_length = self._get_soundhole_center().distance(soundhole_perpendicular_intersection)
-		return halfsegment_length - halfsegment_length / sympy.S.GoldenRatio # small side of golden ratio
+		self.halfsegment_length = self._get_soundhole_center().distance(soundhole_perpendicular_intersection)
+		return self.halfsegment_length - self.halfsegment_length / sympy.S.GoldenRatio # small side of golden ratio
 
 
 class Soundhole_HalfUnit(Soundhole):
@@ -386,10 +386,7 @@ class Lute(ABC):
 		self._make_full_view_objects()
 		self.__dump_full_view()
 
-	def print_measurements(self):
-		print(37 * "=")
-		print(f"{type(self).__name__:<30} mm")
-
+	def _set_measurements(self):
 		# Top width is 4 * unit, unless the blending narrows it by falling towards the top
 		# TODO: Could there a larger blender towards the bottom?
 		if (self.blender_intersection_1.x < self.form_side.x):
@@ -397,7 +394,7 @@ class Lute(ABC):
 		else:
 			form_width = 2 * self.form_side.distance(self.spine)
 
-		measurements = [
+		self.measurements = [
 			("Unit:", self.unit),
 			("Form Width:", form_width),
 			("Form Length:", self.form_bottom.distance(self.form_top)),
@@ -409,10 +406,16 @@ class Lute(ABC):
 			("Neck-joint width:", self.__get_neck_joint_width())
 		]
 
+	def print_measurements(self):
+		print(37 * "=")
+		print(f"{type(self).__name__:<30} mm")
+
+		self._set_measurements()
+
 		convert = self._get_unit_in_mm() / self.unit
 
 		[Lute.print_meaurement(measurement_name, convert * measurement_value) \
-			for (measurement_name, measurement_value) in measurements]
+			for (measurement_name, measurement_value) in self.measurements]
 
 		print(37 * "=")
 
@@ -551,6 +554,11 @@ class ManolLavta_1872(Blend_SideCircle, Soundhole_OneThirdOfSegment, SoundholeAt
 	def _get_blender_radius(self):
 		return self.vertical_unit
 
+	@override
+	def _set_measurements(self):
+		super()._set_measurements()
+		self.measurements.append(("Vertical Unit:", self.vertical_unit))
+
 class Brussels0404(BlendWith_DoubleUnit, Blend_Classic, Soundhole_HalfUnit, LuteType3):
 	override
 	def _make_spine_points(self):
@@ -601,6 +609,12 @@ class ManolLavta_AthensMuseum(Blend_Classic, Soundhole_GoldenRatiofOfSegment, So
 	def _get_blender_radius(self):
 		return 1.5 * self.unit
 
+	@override
+	def _set_measurements(self):
+		super()._set_measurements()
+		self.measurements.append(("Soundhole radius:", self._get_soundhole_radius()))
+		# self.measurements.append(("Soundhole segment half:", self.halfsegment_length))
+		self.measurements.append(("Vertical Unit:", self.vertical_unit))
 
 class LuteType2(TopArc_Type2, Lute):
 	"""
