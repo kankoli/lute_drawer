@@ -1,4 +1,5 @@
 import svgwrite
+import svgutils
 from sympy import Point, Circle, Line, Segment, intersection as sympy_intersection
 import numpy as np
 
@@ -374,6 +375,12 @@ class GeoDSL:
                 raise ValueError("A non-drawable object passed: ", element)
 
         dwg.save()
+
+        svg = svgutils.transform.fromfile(filename)
+        originalSVG = svgutils.compose.SVG(filename)
+        originalSVG.rotate(90, 500,500)
+        figure = svgutils.compose.Figure(svg.height, svg.width, originalSVG)
+        figure.save(filename)
 
     @staticmethod
     def draw_circle(dwg, element):
