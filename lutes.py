@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import final, override
 from GeoDSL import GeoDSL, Point, GeoArc
 import os.path
+import sympy
 
 # Create an instance of GeoDSL
 geo = GeoDSL()
@@ -30,6 +31,11 @@ class TopArc_Type3(TopArc):
 	@override
 	def _get_top_arc_radius(self):
 		return 6 * self.unit
+
+class TopArc_Type4(TopArc):
+	@override
+	def _get_top_arc_radius(self):
+		return 7 * self.unit
 
 class TopArc_Type10(TopArc):
 	@override
@@ -107,6 +113,16 @@ class Soundhole_OneThirdOfSegment(Soundhole):
 		# Let the whole line segment between the two top-arcs be 6 units, then the radius should be 1 unit
 		# We worked with half of that line segment, only measuring towards one side. Hence division by 3
 		return self._get_soundhole_center().distance(soundhole_perpendicular_intersection) / 3
+
+class Soundhole_GoldenRatiofOfSegment(Soundhole):
+	@override
+	def _get_soundhole_radius(self):
+		self.soundhole_perpendicular = geo.perpendicular_line(self.spine, self._get_soundhole_center())
+		soundhole_perpendicular_intersection = geo.pick_point_closest_to(self.spine, geo.intersection(self.top_arc_circle, self.soundhole_perpendicular))
+
+		halfsegment_length = self._get_soundhole_center().distance(soundhole_perpendicular_intersection)
+		return halfsegment_length - halfsegment_length / sympy.S.GoldenRatio # small side of golden ratio
+
 
 class Soundhole_HalfUnit(Soundhole):
 	@override
@@ -558,6 +574,34 @@ class Brussels0404(BlendWith_DoubleUnit, Blend_Classic, Soundhole_HalfUnit, Lute
 		self.point_neck_joint = geo.reflect(self.bridge, self._get_soundhole_center())
 
 
+class LuteType4(TopArc_Type4, Lute):
+	pass
+
+class ManolLavta_AthensMuseum(Blend_Classic, Soundhole_GoldenRatiofOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
+	# bottom arc and blending needs adjustment
+	@override
+	def _get_unit_in_mm(self):
+		return 300 / 4
+
+	@override
+	def _make_top_2_point(self):
+		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+
+	@override
+	def _make_spine_points(self):
+		self._make_neck_joint_fret()
+
+		self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
+
+		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 5
+
+		self.bridge = geo.translate_point_x(self.form_bottom, -self.vertical_unit) # negation is important
+
+	@override
+	def _get_blender_radius(self):
+		return 1.5 * self.unit
+
+
 class LuteType2(TopArc_Type2, Lute):
 	"""
 																top_arc_center
@@ -936,6 +980,7 @@ def test_all_lutes():
 	lutes.extend([ lute() for lute in TurkishOud.__subclasses__() ])
 	lutes.extend([ IstanbulLavta(),IkwanAlSafaOud(), HannaNahatOud() ])
 	lutes.extend([ lute() for lute in LuteType3.__subclasses__() ])
+	lutes.extend([ lute() for lute in LuteType4.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType1.__subclasses__() ])
 	lutes.extend([ lute() for lute in LuteType10.__subclasses__() ])
 	lutes.extend([ lute() for lute in TurkishOud2.__subclasses__() ])
@@ -950,7 +995,7 @@ def test_single_lute():
 	lute.print_measurements()
 
 def main():
-	testing_all = 0
+	testing_all = 1
 	if testing_all == 1:
 		test_all_lutes()
 	else:
