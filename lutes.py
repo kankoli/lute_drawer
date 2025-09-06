@@ -294,7 +294,7 @@ class Lute(ABC):
 		return 100 # dummy value
 
 	def _get_unit_display_size(self):
-		return 150
+		return 100
 
 	def _base_construction(self):
 		self.unit = self._get_unit_display_size() #  1/4th of the belly
@@ -540,6 +540,7 @@ class Brussels0404(BlendWith_DoubleUnit, Blend_Classic, Soundhole_HalfUnit, Lute
 	def _make_spine_points(self):
 		half_vesica_piscis_circle = geo.circle_by_center_and_radius(self.waist_2, 2*self.unit)
 		self.vesica_piscis_intersections = geo.intersection(self.spine, half_vesica_piscis_circle)
+		# form bottom is described by jdowning as 2 units from form center, unlike below
 		self.form_bottom = geo.pick_point_furthest_from(self.form_top, self.vesica_piscis_intersections)
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.unit)
 
@@ -727,7 +728,7 @@ class TurkishOudSingleMiddleArc(Blend_Classic, SmallSoundhole_Turkish, Soundhole
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
-class TurkishOudDoubleMiddleArcs(BlendWith_Unit, Blend_SideCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
+class TurkishOudDoubleMiddleArcs(BlendWith_OneAndHalfUnit, Blend_SideCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
 	def _get_side_circle_radius(self):
 		return 2*self.unit
@@ -761,7 +762,6 @@ class IstanbulLavta(Blend_StepCircle, Soundhole_OneThirdOfSegment, SoundholeAt_N
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
 
-		self.top_6 = geo.translate_point_x(self.form_top, 5 * self.unit)
 		self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
 
 		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 4
