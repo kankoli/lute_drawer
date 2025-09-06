@@ -507,6 +507,34 @@ class Lute(ABC):
 class LuteType3(TopArc_Type3, Lute):
 	pass
 
+class ManolLavta_1872(Blend_SideCircle, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType3, Neck_ThruTop2):
+	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
+	@override
+	def _get_unit_in_mm(self):
+		return 300 / 4
+
+	@override
+	def _make_top_2_point(self):
+		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+
+	@override
+	def _make_spine_points(self):
+		self._make_neck_joint_fret()
+
+		self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
+
+		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 5
+
+		self.bridge = geo.translate_point_x(self.form_bottom, -self.vertical_unit) # negation is important
+
+	@override
+	def _get_side_circle_radius(self):
+		return 2*self.unit
+
+	@override
+	def _get_blender_radius(self):
+		return self.vertical_unit
+
 class Brussels0404(BlendWith_DoubleUnit, Blend_Classic, Soundhole_HalfUnit, LuteType3):
 	override
 	def _make_spine_points(self):
