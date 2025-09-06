@@ -215,7 +215,7 @@ class LowerArcBuilder(ABC):
 		tangent_circles = [circle_1]
 		tangent_points = [self.form_top]
 		for tp in self._get_tangent_parameters():
-			tangent_circle, tangent_point = GeoDSL.get_tangent_circle(current_circle, tp.line, tb.radius, tp.closest_point, True)
+			tangent_circle, tangent_point = geo.get_tangent_circle(current_circle, tp.line, tp.radius, tp.closest_point, True)
 			tangent_circles.append(tangent_circle)
 			tangent_points.append(tangent_point)
 
@@ -245,6 +245,8 @@ class LowerArcBuilder(ABC):
 		pass
 
 class SimpleBlend(LowerArcBuilder):
+	# These classes come after the ones defining _get_tangent_parameters
+	# so the list doesn't get overwritten to []
 	@override
 	def _get_tangent_parameters(self):
 		return []
@@ -284,17 +286,10 @@ class Blend_WithCircle(CircleBlender):
 			[self.form_top, self.form_bottom, self.blender_intersection_2] \
 		]
 
-class Blend_SideCircle(Blend_WithCircle):
-	@abstractmethod
-	def _get_side_circle_radius(self):
-		pass
-
+class SideCircle_TwoUnits(LowerArcBuilder):
 	@override
-	def _make_blender_side_circle(self):
-		second_arc_radius = self._get_side_circle_radius()
-		second_arc_center = geo.translate_point_y(self.form_side, second_arc_radius)
-		self.side_circle = geo.circle_by_center_and_radius(second_arc_center, second_arc_radius) # Readily blended with top_arc_circle
-		self.top_arc_finish = self.form_side # Shortcut to intersection of the top circle and side circle
+	def _get_tangent_parameters(self):
+		return [TangentParameter(self.centerline, 2 * self.unit, self.form_side)]
 
 class Blend_StepCircle(Blend_WithCircle):
 	@abstractmethod
@@ -562,7 +557,7 @@ class Lute(ABC):
 class LuteType3(TopArc_Type3, Lute):
 	pass
 
-class ManolLavta_1872(Blend_SideCircle, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType3, Neck_ThruTop2):
+class ManolLavta_1872(SimpleBlend, SideCircle_TwoUnits, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType3, Neck_ThruTop2):
 	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
 	@override
 	def _get_unit_in_mm(self):
@@ -581,10 +576,6 @@ class ManolLavta_1872(Blend_SideCircle, Soundhole_OneThirdOfSegment, SoundholeAt
 		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 5
 
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.vertical_unit) # negation is important
-
-	@override
-	def _get_side_circle_radius(self):
-		return 2*self.unit
 
 	@override
 	def _get_blender_radius(self):
@@ -759,10 +750,8 @@ class TurkishOud2_1(SimpleBlend, TurkishOud2):
 	def _get_blender_radius(self):
 		return self.small_soundhole_centers[0].distance(self._get_soundhole_center())
 
-class TurkishOud2_2(SimpleBlend_Unit, Blend_SideCircle, TurkishOud2):
-	@override
-	def _get_side_circle_radius(self):
-		return 2*self.unit
+class TurkishOud2_2(SideCircle_TwoUnits, SimpleBlend_Unit, TurkishOud2):
+	pass
 
 class TurkishOud2_3(SimpleBlend_Unit, Blend_StepCircle, TurkishOud2):
 	@override
@@ -779,6 +768,8 @@ class TurkishOud2_3(SimpleBlend_Unit, Blend_StepCircle, TurkishOud2):
 
 		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
+class TurkishOud2_4(SimpleBlend_Unit, TurkishOud2):
+	pass
 
 class TurkishOud(LuteType2, Neck_Quartered):
 	@override
@@ -822,10 +813,8 @@ class TurkishOudSingleMiddleArc(SimpleBlend, SmallSoundhole_Turkish, Soundhole_H
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
-class TurkishOudDoubleMiddleArcs(SimpleBlend_OneAndHalfUnit, Blend_SideCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
-	@override
-	def _get_side_circle_radius(self):
-		return 2*self.unit
+class TurkishOudDoubleMiddleArcs(SimpleBlend_OneAndHalfUnit, SideCircle_TwoUnits, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
+	pass
 
 class TurkishOudComplexLowerBout(SimpleBlend_Unit, Blend_StepCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
@@ -878,7 +867,7 @@ class IkwanAlSafaOud(SimpleBlend_DoubleUnit, Soundhole_HalfUnit, SoundholeAt_Nec
 		self.bridge = geo.translate_point_x(self.form_center, 3 * self.unit / 4)
 		self.form_bottom = geo.translate_point_x(self.form_center, 2*self.unit)
 
-class HannaNahatOud(Blend_SideCircle, Soundhole_ThreeQuarters, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_Quartered):
+class HannaNahatOud(SideCircle_TwoUnits, Soundhole_ThreeQuarters, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_Quartered):
 	@override
 	def _get_unit_in_mm(self):
 		return 365/4
@@ -889,10 +878,6 @@ class HannaNahatOud(Blend_SideCircle, Soundhole_ThreeQuarters, SoundholeAt_NeckB
 
 		self.bridge = geo.translate_point_x(self.form_center, 3 * self.unit / 4)
 		self.form_bottom = geo.translate_point_x(self.bridge, self.unit)
-
-	@override
-	def _get_side_circle_radius(self):
-		return 2*self.unit
 
 	@override
 	def _get_blender_radius(self):
@@ -1040,7 +1025,7 @@ def test_all_lutes():
 	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = HochLavta()
+	lute = TurkishOud2_2()
 	lute.draw()
 	lute.print_measurements()
 

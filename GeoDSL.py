@@ -341,7 +341,6 @@ class GeoDSL:
         dwg = svgwrite.Drawing(filename='tangent_output.svg', profile='tiny', size=(1400, 1100))
         GeoDSL.draw_circle(dwg, circle)
         GeoDSL.draw_point(dwg, circle.center)
-        GeoDSL.draw_line(dwg, line)
 
         intersections = self.intersection(circle, line)
         intersection = self.pick_point_closest_to(closest_point, intersections)
