@@ -245,7 +245,7 @@ class LowerArcBuilder(ABC):
 		pass
 
 class SimpleBlend(LowerArcBuilder):
-	# These classes come after the ones defining _get_tangent_parameters
+	# These classes come AFTER the ones defining _get_tangent_parameters
 	# so the list doesn't get overwritten to []
 	@override
 	def _get_tangent_parameters(self):
@@ -752,7 +752,7 @@ class TurkishOudSingleMiddleArc(SimpleBlend, SmallSoundhole_Turkish, Soundhole_H
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
-class TurkishOudDoubleMiddleArcs(SimpleBlend_OneAndHalfUnit, SideCircle_TwoUnits, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
+class TurkishOudDoubleMiddleArcs(SideCircle_TwoUnits, SimpleBlend_OneAndHalfUnit, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	pass
 
 class TurkishOudComplexLowerBout(SideStep, SimpleBlend_Unit, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
