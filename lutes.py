@@ -402,22 +402,19 @@ class Lute(ABC):
 		self._make_full_view_objects()
 		self.__dump_full_view()
 
+	def __find_form_width(self):
+		current_farthest_distance = 0
+		for arc in self.arc_params:
+			distance = arc[1].distance(self.spine)
+			if distance > current_farthest_distance:
+				current_farthest_distance = distance
+
+		return 2 * current_farthest_distance
+
 	def _set_measurements(self):
-		'''
-		TODO: Form width needs some calculation with the introduction of LowerArcBuilder.
-		Taking it out of display for now.
-
-		# Top width is 4 * unit, unless the blending narrows it by falling towards the top
-		# TODO: Could there a larger blender towards the bottom?
-		if (self.blender_intersection_1.x < self.form_side.x):
-			form_width = 2 * self.blender_intersection_1.distance(self.spine)
-		else:
-			form_width = 2 * self.form_side.distance(self.spine)
-		'''
-
 		self.measurements = [
 			("Unit:", self.unit),
-			# ("Form Width:", form_width),
+			("Form Width:", self.__find_form_width()),
 			("Form Length:", self.form_bottom.distance(self.form_top)),
 			("Neck to Bottom:", self.form_bottom.distance(self.point_neck_joint)),
 			("(1/3-Neck) Scale:", (3 / 2) * self.point_neck_joint.distance(self.bridge)),
