@@ -347,10 +347,10 @@ class Lute(ABC):
 	def _base_construction(self):
 		self.unit = self._get_unit_display_size() #  1/4th of the belly
 
-		self.A = geo.point(150, 600)
+		self.A = geo.point(50, 50)
 		self.B = geo.point(self.A.x + self.unit, self.A.y)
 
-		self.form_center = geo.point(700, 500)
+		self.form_center = geo.point(500, -100)
 		self.waist_2 = geo.translate_point_y(self.form_center, -self.unit)
 		self.form_side = geo.translate_point_y(self.form_center, -2 * self.unit)
 
@@ -991,7 +991,7 @@ class Brussels0164(SimpleBlend, SmallSoundhole_Brussels0164, LuteType1):
 class LuteType10(TopArc_Type10, Lute):
 	@override
 	def _get_unit_display_size(self):
-		return 100
+		return 50
 
 	@override
 	def _make_top_2_point(self):

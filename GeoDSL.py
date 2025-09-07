@@ -4,7 +4,7 @@ import svgutils
 from sympy import Point, Circle, Line, Segment, intersection as sympy_intersection
 import numpy as np
 
-svg_size = [1300, 900]
+svg_size = [700, 600]
 
 class GeoArc:
     def __init__(self, center, p1, p2):
