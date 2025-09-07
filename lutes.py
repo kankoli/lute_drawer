@@ -249,7 +249,8 @@ class SimpleBlend(LowerArcBuilder):
 	# so the list doesn't get overwritten to []
 	@override
 	def _get_tangent_parameters(self):
-		return []
+		self.tangents = []
+		return self.tangents
 
 class SimpleBlend_Unit(SimpleBlend):
 	@override
@@ -266,38 +267,21 @@ class SimpleBlend_DoubleUnit(SimpleBlend):
 	def _get_blender_radius(self):
 		return 2 * self.unit
 
-
-class CircleBlender(ABC):
-	@abstractmethod
-	def _make_blender_side_circle(self):
-		pass
-
-	@abstractmethod
-	def _make_arcs(self):
-		pass
-
-class Blend_WithCircle(CircleBlender):
-	@override
-	def _make_arcs(self):
-		self.arc_params = [ \
-			[self.top_arc_center, self.top_arc_finish, self.form_top], \
-			[self.side_circle.center, self.blender_intersection_1, self.top_arc_finish], \
-			[self.blender_circle.center, self.blender_intersection_2, self.blender_intersection_1], \
-			[self.form_top, self.form_bottom, self.blender_intersection_2] \
-		]
-
 class SideCircle_TwoUnits(LowerArcBuilder):
 	@override
 	def _get_tangent_parameters(self):
-		return [TangentParameter(self.centerline, 2 * self.unit, self.form_side)]
+		super()._get_tangent_parameters()
+		self.tangents.append(TangentParameter(self.centerline, 2 * self.unit, self.form_side))
+		return self.tangents
 
-class Blend_StepCircle(Blend_WithCircle):
+class SideStep(LowerArcBuilder):
 	@abstractmethod
 	def _get_step_circle_radius(self):
 		pass
 
 	@override
-	def _make_blender_side_circle(self):
+	def _get_tangent_parameters(self):
+		super()._get_tangent_parameters()
 		self.step_circle = geo.circle_by_center_and_radius(self.form_side, self._get_step_circle_radius())
 
 		step_intersections = geo.intersection(self.step_circle, self.top_arc_circle)
@@ -308,18 +292,12 @@ class Blend_StepCircle(Blend_WithCircle):
 		second_arc_center = self.connector_intersections[0] # single intersection
 
 		second_arc_radius = second_arc_center.distance(self.top_arc_finish)
-		self.side_circle = geo.circle_by_center_and_radius(second_arc_center, second_arc_radius)
 
-	@override
-	def _make_arcs(self):
-		self.arc_params = [ \
-			[self.top_arc_center, self.top_arc_finish, self.form_top], \
-			[self.side_circle.center, self.blender_intersection_1, self.top_arc_finish], \
-			[self.blender_circle.center, self.blender_intersection_2, self.blender_intersection_1], \
-			[self.form_top, self.form_bottom, self.blender_intersection_2] \
-		]
+		# Special case where the new circle's center is determined first, in order to calculate the radius.
+		# The superclass will re-calculate the center itself.
+		self.tangents.append(TangentParameter(self.connector_1, second_arc_radius, self.form_bottom))
 
-
+		return self.tangents
 
 class Lute(ABC):
 	@staticmethod
@@ -753,20 +731,10 @@ class TurkishOud2_1(SimpleBlend, TurkishOud2):
 class TurkishOud2_2(SideCircle_TwoUnits, SimpleBlend_Unit, TurkishOud2):
 	pass
 
-class TurkishOud2_3(SimpleBlend_Unit, Blend_StepCircle, TurkishOud2):
+class TurkishOud2_3(SideStep, SimpleBlend_Unit, TurkishOud2):
 	@override
 	def _get_step_circle_radius(self):
 		return self.unit / 4
-
-	@override
-	def _make_helper_objects(self):
-		super()._make_helper_objects()
-		self.helper_objects.extend([self.connector_1, self.step_circle])
-		self.helper_objects.append(self.top_arc_center)
-		self.helper_objects.append(self.top_arc_finish)
-		self.helper_objects.append(self.connector_intersections[0])
-
-		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
 class TurkishOud2_4(SimpleBlend_Unit, TurkishOud2):
 	pass
@@ -816,27 +784,17 @@ class TurkishOudSingleMiddleArc(SimpleBlend, SmallSoundhole_Turkish, Soundhole_H
 class TurkishOudDoubleMiddleArcs(SimpleBlend_OneAndHalfUnit, SideCircle_TwoUnits, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	pass
 
-class TurkishOudComplexLowerBout(SimpleBlend_Unit, Blend_StepCircle, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
+class TurkishOudComplexLowerBout(SideStep, SimpleBlend_Unit, SmallSoundhole_Turkish, Soundhole_HalfUnit, TurkishOud):
 	@override
 	def _get_step_circle_radius(self):
 		return self.unit / 4
-
-	@override
-	def _make_helper_objects(self):
-		super()._make_helper_objects()
-		self.helper_objects.extend([self.connector_1, self.step_circle])
-		self.helper_objects.append(self.top_arc_center)
-		self.helper_objects.append(self.top_arc_finish)
-		self.helper_objects.append(self.connector_intersections[0])
-
-		self.helper_objects.extend([self.top_2, self.top_3, self.top_4])
 
 class TurkishOudSoundholeThird(SimpleBlend, SmallSoundhole_Turkish, Soundhole_OneThirdOfSegment, TurkishOud):
 	@override
 	def _get_blender_radius(self):
 		return 3 * self.small_soundhole_centers[0].distance(self.small_soundhole_centers[1]) / 4
 
-class IstanbulLavta(Blend_StepCircle, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_ThruTop2):
+class IstanbulLavta(SideStep, SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_ThruTop2):
 	@override
 	def _get_unit_in_mm(self):
 		return 300 / 4
@@ -867,7 +825,7 @@ class IkwanAlSafaOud(SimpleBlend_DoubleUnit, Soundhole_HalfUnit, SoundholeAt_Nec
 		self.bridge = geo.translate_point_x(self.form_center, 3 * self.unit / 4)
 		self.form_bottom = geo.translate_point_x(self.form_center, 2*self.unit)
 
-class HannaNahatOud(SideCircle_TwoUnits, Soundhole_ThreeQuarters, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_Quartered):
+class HannaNahatOud(SideCircle_TwoUnits, SimpleBlend, Soundhole_ThreeQuarters, SoundholeAt_NeckBridgeMidpoint, LuteType2, Neck_Quartered):
 	@override
 	def _get_unit_in_mm(self):
 		return 365/4
@@ -1025,12 +983,12 @@ def test_all_lutes():
 	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = TurkishOud2_2()
+	lute = IstanbulLavta()
 	lute.draw()
 	lute.print_measurements()
 
 def main():
-	testing_all = 0
+	testing_all = 1
 	if testing_all == 1:
 		test_all_lutes()
 	else:
