@@ -299,6 +299,20 @@ class SideStep(LowerArcBuilder):
 
 		return self.tangents
 
+class LavtaLowerArc(LowerArcBuilder):
+	@override
+	def _get_tangent_parameters(self):
+		super()._get_tangent_parameters()
+
+		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 3)[1]
+		line_1 = geo.line(self.top_arc_center, spine_point)
+		radius_1 = self.unit * 4
+
+		self.tangents.append(TangentParameter(line_1, radius_1, self.form_center))
+
+		return self.tangents
+
+
 class Lute(ABC):
 	@staticmethod
 	def print_meaurement(measurement_name, value):
@@ -559,17 +573,16 @@ class Brussels0404(SimpleBlend_DoubleUnit, Soundhole_HalfUnit, LuteType3):
 
 
 class LuteType4(TopArc_Type4, Lute):
-	pass
-
-class ManolLavta_AthensMuseum(SimpleBlend, Soundhole_GoldenRatiofOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
-	# bottom arc and blending needs adjustment
-	@override
-	def _get_unit_in_mm(self):
-		return 300 / 4
-
 	@override
 	def _make_top_2_point(self):
 		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
+
+
+class ManolLavta(LavtaLowerArc, SimpleBlend, Soundhole_GoldenRatiofOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
+	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
+	@override
+	def _get_unit_in_mm(self):
+		return 300 / 4
 
 	@override
 	def _make_spine_points(self):
@@ -583,7 +596,7 @@ class ManolLavta_AthensMuseum(SimpleBlend, Soundhole_GoldenRatiofOfSegment, Soun
 
 	@override
 	def _get_blender_radius(self):
-		return 1.5 * self.unit
+		return self.vertical_unit
 
 	@override
 	def _set_measurements(self):
@@ -591,6 +604,9 @@ class ManolLavta_AthensMuseum(SimpleBlend, Soundhole_GoldenRatiofOfSegment, Soun
 		self.measurements.append(("Soundhole radius:", self._get_soundhole_radius()))
 		# self.measurements.append(("Soundhole segment half:", self.halfsegment_length))
 		self.measurements.append(("Vertical Unit:", self.vertical_unit))
+
+class ManolLavta_Type3(LuteType3, ManolLavta):
+	pass
 
 class LuteType2(TopArc_Type2, Lute):
 	"""
@@ -954,12 +970,12 @@ def test_all_lutes():
 	[lute.draw() for lute in lutes]
 
 def test_single_lute():
-	lute = IstanbulLavta()
+	lute = ManolLavta()
 	lute.draw()
 	lute.print_measurements()
 
 def main():
-	testing_all = 1
+	testing_all = 0
 	if testing_all == 1:
 		test_all_lutes()
 	else:
