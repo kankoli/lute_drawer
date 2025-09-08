@@ -578,48 +578,34 @@ class LuteType4(TopArc_Type4, Lute):
 
 class ManolLavta(SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
 	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
+
 	@override
 	def _get_unit_in_mm(self):
 		return 300 / 4
 
 	@override
 	def _make_bottom_arc_circle(self):
-		bottom_arc_center = geo.translate_point_x(self.form_top, -4 * self.unit)
+		bottom_arc_center = geo.translate_point_x(self.form_top, -2 * self.unit)
 		self.bottom_arc_circle = geo.circle_by_center_and_point(bottom_arc_center, self.form_bottom)
 
 	@override
 	def _make_spine_points(self):
 		self._make_neck_joint_fret()
 
-		self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
+		# self.form_bottom = geo.translate_point_x(self.form_top, 6 * self.unit)
+		self.form_bottom = geo.reflect(geo.divide_distance(self.form_top, self.form_center, 3)[-1], self.form_center)
 
 		self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 5
 
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.vertical_unit) # negation is important
 
 	@override
-	def _set_measurements(self):
-		super()._set_measurements()
-		self.measurements.append(("Soundhole radius:", self._get_soundhole_radius()))
-		# self.measurements.append(("Soundhole segment half:", self.halfsegment_length))
-		self.measurements.append(("Vertical Unit:", self.vertical_unit))
-
-	@override
 	def _get_tangent_parameters(self):
 		super()._get_tangent_parameters()
 
 		tangent = self.top_arc_circle
-		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 2)[-1]
-		radius = self.unit * 5
-		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
-		self.tangents.append(tangent)
 
-		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 3)[-1]
-		radius = self.unit * 9
-		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
-		self.tangents.append(tangent)
-
-		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 8)[-1]
+		spine_point = self.form_center
 		radius = self.unit * 3
 		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
 		self.tangents.append(tangent)
@@ -628,10 +614,21 @@ class ManolLavta(SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridg
 
 	@override
 	def _get_blender_radius(self):
-		return self.unit
+		return self.vertical_unit
+
+	@override
+	def _set_measurements(self):
+		super()._set_measurements()
+		self.measurements.append(("Soundhole radius:", self._get_soundhole_radius()))
+		# self.measurements.append(("Soundhole segment half:", self.halfsegment_length))
+		self.measurements.append(("Vertical Unit:", self.vertical_unit))
 
 class ManolLavta_Type3(LuteType3, ManolLavta):
 	pass
+
+class ManolLavta_Athens(Soundhole_GoldenRatiofOfSegment, ManolLavta):
+	pass
+
 
 class LuteType2(TopArc_Type2, Lute):
 	"""
