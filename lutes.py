@@ -5,7 +5,8 @@ import os.path
 import sympy
 
 # Create an instance of GeoDSL
-geo = GeoDSL()
+display_size = 100
+geo = GeoDSL(display_size)
 
 class TopArc(ABC):
 	@abstractmethod
@@ -335,15 +336,19 @@ class Lute(ABC):
 		return 100 # dummy value
 
 	def _get_unit_display_size(self):
-		return 100
+		return display_size
+
+	def _get_form_center(self):
+		return geo.point(self._get_unit_display_size() * 5.5, self._get_unit_display_size() * 3)
 
 	def _base_construction(self):
 		self.unit = self._get_unit_display_size() #  1/4th of the belly
 
-		self.A = geo.point(50, 50)
+		self.form_center = self._get_form_center()
+
+		self.A = geo.point(self.form_center.x-self.unit, self.form_center.y-self.unit)
 		self.B = geo.point(self.A.x + self.unit, self.A.y)
 
-		self.form_center = geo.point(500, -100)
 		self.waist_2 = geo.translate_point_y(self.form_center, -self.unit)
 		self.form_side = geo.translate_point_y(self.form_center, -2 * self.unit)
 
@@ -418,6 +423,7 @@ class Lute(ABC):
 			("Form Width:", self.__find_form_width()),
 			("Form Length:", self.form_bottom.distance(self.form_top)),
 			("Neck to Bottom:", self.form_bottom.distance(self.point_neck_joint)),
+			("Neck to Bridge:", self.point_neck_joint.distance(self.bridge)),
 			("(1/3-Neck) Scale:", (3 / 2) * self.point_neck_joint.distance(self.bridge)),
 			("(1/3-Neck) Neck length:", (1 / 2) * self.point_neck_joint.distance(self.bridge)),
 			("(Half-Neck) Scale:", 2 * self.point_neck_joint.distance(self.bridge)),
@@ -451,24 +457,31 @@ class Lute(ABC):
 		return width_at_point
 
 	def _make_template_points(self):
-		self.template_bottom_halving_point = geo.midpoint(self.bridge, self.form_bottom)
-		self.template_top = geo.translate_point_x(self.form_top, -self.unit / 4)
-		self.template_bottom = geo.translate_point_x(self.form_bottom, self.unit / 4)
-		self.template_spine = geo.line(self.template_top, self.template_bottom)
+		template_top = geo.translate_point_x(self.form_top, -self.unit / 4)
+		template_bottom = geo.translate_point_x(self.form_bottom, self.unit / 4)
+		self.template_spine = geo.line(template_top, template_bottom)
+
+		end_neck_block = geo.translate_point_x(self.point_neck_joint, self.unit)
+		intermediate_points = geo.divide_distance(end_neck_block, self.form_bottom, 10)
 
 		self.template_points = [
-			self.template_top, \
+			template_top, \
 			self.form_top, \
 			self.point_neck_joint, \
+			end_neck_block,
 			self.form_center, \
 			self.bridge, \
-			self.form_bottom, self.template_bottom_halving_point, \
-			self.template_bottom, \
+			# beginning of end-block
+			geo.translate_point_x(self.form_bottom, -self.unit/8), \
+			self.form_bottom, \
+			template_bottom, \
 		]
 
 		soundhole_center = self._get_soundhole_center()
 		if soundhole_center is not None:
 			self.template_points.append(soundhole_center)
+
+		self.template_points.extend(intermediate_points)
 
 	def _make_template_lines(self):
 		self._make_template_points()
@@ -487,6 +500,7 @@ class Lute(ABC):
 			self.template_objects.append(self.soundhole_circle)
 
 		self.template_objects.extend(self.template_lines)
+		self.template_objects.extend(self.template_points)
 
 	@final
 	def __get_file_name_prefix(self):
@@ -497,7 +511,7 @@ class Lute(ABC):
 
 	@final
 	def __dump_template(self):
-		GeoDSL.draw_svg(self.template_objects, self.__get_file_name_prefix() + '_template.svg')
+		geo.draw_svg(self.template_objects, self.__get_file_name_prefix() + '_template.svg')
 
 	def _make_helper_objects(self):
 		self.helper_objects = [
@@ -520,7 +534,7 @@ class Lute(ABC):
 
 	@final
 	def __dump_helper(self):
-		GeoDSL.draw_svg(self.helper_objects, self.__get_file_name_prefix() + '_helpers.svg')
+		geo.draw_svg(self.helper_objects, self.__get_file_name_prefix() + '_helpers.svg')
 
 	def _make_full_view_objects(self):
 		self.full_view_objects = [
@@ -541,7 +555,7 @@ class Lute(ABC):
 
 	@final
 	def __dump_full_view(self):
-		GeoDSL.draw_svg(self.full_view_objects, self.__get_file_name_prefix() + '_full_view.svg')
+		geo.draw_svg(self.full_view_objects, self.__get_file_name_prefix() + '_full_view.svg')
 
 
 class LuteType3(TopArc_Type3, Lute):
@@ -581,7 +595,7 @@ class ManolLavta(SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridg
 
 	@override
 	def _get_unit_in_mm(self):
-		return 300 / 4
+		return 285 / 4
 
 	@override
 	def _make_bottom_arc_circle(self):

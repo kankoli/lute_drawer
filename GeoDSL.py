@@ -4,69 +4,71 @@ import svgutils
 from sympy import Point, Circle, Line, Segment, intersection as sympy_intersection
 import numpy as np
 
-svg_size = [700, 600]
-
 class GeoArc:
     def __init__(self, center, p1, p2):
         self.center = center
-        self.radius = center.distance(p1)  # Calculate radius based on center and one point
-        self.angle1 = self._calculate_angle(center, p1)  # Calculate angle for p1
-        self.angle2 = self._calculate_angle(center, p2)  # Calculate angle for p2
+        self.radius = center.distance(p1)
+        self.angle1 = self._calculate_angle(center, p1)
+        self.angle2 = self._calculate_angle(center, p2)
         self.point1 = p1
         self.point2 = p2
 
-    def intersect(self, other):
-        """Calculate the intersection points between the arc and another geometric object."""
-        points = sympy_intersection(Circle(self.center, self.radius), other)  # Use Circle's intersection
+    @staticmethod
+    def _calculate_angle(center, point):
+        """Angle of point relative to center in degrees."""
+        cx, cy = map(float, center.args)
+        px, py = map(float, point.args)
+        return (180.0 / np.pi) * np.arctan2(py - cy, px - cx)
 
-        valid_points = []
-        for point in points:
-            if isinstance(point, Point):
-                angle = self._calculate_angle(self.center, point)
-                if min(self.angle1, self.angle2) <= angle <= max(self.angle1, self.angle2):
-                    valid_points.append(point)
+    def _is_angle_between(self, test_angle, start_angle, end_angle, eps=1e-9):
+        """
+        Return True if test_angle lies on the directed arc start_angle → end_angle.
+        Endpoint-safe and handles CW/CCW arcs.
+        """
+        a = test_angle % 360
+        s = start_angle % 360
+        e = end_angle % 360
 
-        return valid_points
+        sweep = (e - s) % 360
+        if sweep > 180:
+            sweep -= 360  # CW
+        span = (a - s) % 360
+        if sweep < 0:
+            span = ((a - s) % 360) - 360  # adjust for CW
 
-    def _calculate_angle(self, center, point):
-        """Calculate the angle of a point relative to the center."""
-        cx, cy = map(float, center.args)  # Convert to float
-        px, py = map(float, point.args)    # Convert to float
-        return (180 / np.pi) * np.arctan2(py - cy, px - cx)
+        return -eps <= span <= sweep + eps
 
-    def draw(self, dwg, size):
-        """Draw the arc on the provided SVG drawing."""
-        start_angle = np.deg2rad(self.angle1)
-        end_angle = np.deg2rad(self.angle2)
+    def draw(self, dwg):
+        """Draw the arc with correct SVG flags respecting point order."""
+        cx, cy = float(self.center.x), float(self.center.y)
+        r = float(self.radius)
 
-        start_point = (
-            float(self.center.x) + float(self.radius) * np.cos(start_angle),
-            size[1] - (float(self.center.y) + float(self.radius) * np.sin(start_angle))
-        )
+        start_rad = np.deg2rad(self.angle1)
+        end_rad   = np.deg2rad(self.angle2)
+        start_point = (cx + r * np.cos(start_rad), cy + r * np.sin(start_rad))
+        end_point   = (cx + r * np.cos(end_rad),   cy + r * np.sin(end_rad))
 
-        end_point = (
-            float(self.center.x) + float(self.radius) * np.cos(end_angle),
-            size[1] - (float(self.center.y) + float(self.radius) * np.sin(end_angle))
-        )
+        # Compute signed delta for sweep direction
+        delta = (self.angle2 - self.angle1)
+        if delta > 180:
+            delta -= 360
+        elif delta < -180:
+            delta += 360
 
-        # Ensure radius is evaluated correctly as a float
-        radius_float = float(self.radius)
+        sweep_flag = 1 if delta > 0 else 0       # CCW = 1, CW = 0
+        large_arc_flag = 1 if abs(delta) > 180 else 0
 
-        # Create the SVG path for the arc
-        arc_path = dwg.path(
-            d=f'M {start_point[0]} {start_point[1]} A {radius_float} {radius_float} 0 0 1 {end_point[0]} {end_point[1]}',
-            fill='none', stroke='purple', stroke_width=1
-        )
+        d = f'M {start_point[0]} {start_point[1]} ' \
+            f'A {r} {r} 0 {large_arc_flag} {sweep_flag} {end_point[0]} {end_point[1]}'
 
-        # Add the path to the drawing
+        arc_path = dwg.path(d=d, fill='none', stroke='purple', stroke_width=1)
         dwg.add(arc_path)
-
-        # Return the created arc_path for further use if needed
         return arc_path
 
 class GeoDSL:
-    def __init__(self):
-        pass
+    def __init__(self, display_size):
+        self.display_size = display_size
+        self.svg_size = [display_size*9, display_size*6]
 
     def point(self, x, y):
         """Create a point."""
@@ -292,31 +294,21 @@ class GeoDSL:
         """
         dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
         line_between = self.line(p1, p2)
-        # GeoDSL.draw_point(dwg, p1)
-        # GeoDSL.draw_point(dwg, p2)
+
         big_circle = self.circle_by_compass(p2, p1, p2)
         perpendicular_line = self.perpendicular_line(line_between, p2)
         big_intersection_point = self.intersection(big_circle, perpendicular_line)[0]
-        # GeoDSL.draw_point(dwg, big_intersection_point)
-        # GeoDSL.draw_circle(dwg, big_circle)
 
         midpoint = self.midpoint(big_intersection_point, p2)
-        # GeoDSL.draw_point(dwg, midpoint)
         small_circle = self.circle_by_center_and_point(midpoint, p2)
-        # GeoDSL.draw_circle(dwg, small_circle)
 
         cross_line = self.line(midpoint, p1)
         cross_intersections = self.intersection(cross_line, small_circle)
 
         cross_intersection = self.pick_point_closest_to(p1, cross_intersections)
-        # GeoDSL.draw_point(dwg, cross_intersection)
         golden_circle = self.circle_by_center_and_point(p1, cross_intersection)
-        # GeoDSL.draw_circle(dwg, golden_circle)
         golden_intersections = self.intersection(line_between, golden_circle)
         golden_point = self.pick_point_closest_to(p2, golden_intersections)
-        # GeoDSL.draw_point(dwg, golden_point)
-
-        # dwg.save()
 
         return golden_point
 
@@ -357,20 +349,12 @@ class GeoDSL:
         dwg.save()
         return new_circle, intersection
 
-
     def blend_two_circles(self, blender_radius, circle_1, circle_2):
-        dwg = svgwrite.Drawing(filename='blend_output.svg', profile='tiny', size=(1400, 1100))
-        GeoDSL.draw_circle(dwg, circle_1)
-        GeoDSL.draw_circle(dwg, circle_2)
-
         helper_1_radius = circle_1.radius - blender_radius
         helper_1_circle = self.circle_by_center_and_radius(circle_1.center, helper_1_radius)
-        GeoDSL.draw_circle(dwg, helper_1_circle)
         helper_2_radius = circle_2.radius - blender_radius
         helper_2_circle = self.circle_by_center_and_radius(circle_2.center, helper_2_radius)
-        GeoDSL.draw_circle(dwg, helper_2_circle)
 
-        dwg.save()
         helper_circles_intersections = self.intersection(helper_1_circle, helper_2_circle)
 
         ''' TODO: don't attempt to pick the right intersection here.
@@ -384,11 +368,7 @@ class GeoDSL:
             blender_center = helper_circles_intersections[1]
         blender_center = self.simple_point(blender_center)
 
-        GeoDSL.draw_point(dwg, blender_center)
-
         blender_circle = self.circle_by_center_and_radius(blender_center, blender_radius+0.0001)
-        GeoDSL.draw_circle(dwg, blender_circle)
-        dwg.save()
 
         blender_intersections_1 = self.intersection(blender_circle, circle_1)
         blender_intersections_2 = self.intersection(blender_circle, circle_2)
@@ -396,45 +376,105 @@ class GeoDSL:
         return blender_circle, blender_intersections_1[0], blender_intersections_2[0]
 
     @staticmethod
-    def draw_svg(objects, filename='output.svg'):
+    def rotate_drawing(dwg: svgwrite.Drawing, angle: int):
+        """
+        Rotate all elements in a drawing by multiples of 90°, keeping them
+        fully centered.
+        """
+        if angle % 90 != 0:
+            raise ValueError("Only multiples of 90° supported")
+
+        # Extract numeric width/height
+        width = float(str(dwg['width']).replace('px',''))
+        height = float(str(dwg['height']).replace('px',''))
+
+        # Swap width/height for 90°/270°
+        if angle % 180 != 0:
+            dwg['width'], dwg['height'] = dwg['height'], dwg['width']
+            width_new, height_new = height, width
+        else:
+            width_new, height_new = width, height
+
+        # Compute centers
+        cx_old, cy_old = width / 2, height / 2
+        cx_new, cy_new = width_new / 2, height_new / 2
+
+        # Wrap elements in a group
+        g = dwg.g()
+        for elem in dwg.elements:
+            g.add(elem)
+        dwg.elements.clear()
+
+        # Apply combined transform: translate to old center → rotate → translate to new center
+        transform = f"translate({cx_new},{cy_new}) rotate({angle}) translate({-cx_old},{-cy_old})"
+        g.attribs['transform'] = transform
+
+        dwg.add(g)
+
+    def draw_svg(self, objects, filename='output.svg'):
         """Draw specified geometric objects to an SVG file."""
-        dwg = svgwrite.Drawing(filename, profile='tiny', size=svg_size)
+        dwg = svgwrite.Drawing(filename, profile='full', size=self.svg_size)
 
         for element in objects:
             if isinstance(element, Point):
                 GeoDSL.draw_point(dwg, element)
             elif isinstance(element, Line):
-                start = (float(element.p1.x), svg_size[1] - float(element.p1.y))
-                end = (float(element.p2.x), svg_size[1] - float(element.p2.y))
-                dwg.add(dwg.line(start=start, end=end, stroke='blue', stroke_width=2))
+                start = (float(element.p1.x), float(element.p1.y))
+                end = (float(element.p2.x), float(element.p2.y))
+                dwg.add(dwg.line(start=start, end=end, stroke='blue', stroke_width=1))
             elif isinstance(element, Segment):
-                start = (float(element.p1.x), svg_size[1] - float(element.p1.y))
-                end = (float(element.p2.x), svg_size[1] - float(element.p2.y))
-                dwg.add(dwg.line(start=start, end=end, stroke='green', stroke_width=2, stroke_dasharray='1,5'))
+                start = (float(element.p1.x), float(element.p1.y))
+                end = (float(element.p2.x), float(element.p2.y))
+                dwg.add(dwg.line(start=start, end=end, stroke='green', stroke_width=1, stroke_dasharray='5,1'))
             elif isinstance(element, Circle):
                 GeoDSL.draw_circle(dwg, element)
             elif isinstance(element, GeoArc):
-                element.draw(dwg, svg_size)  # Call the Arc's draw method
+                element.draw(dwg)  # Call the Arc's draw method
             else:
                 raise ValueError("A non-drawable object passed: ", element)
 
-        dwg.save()
+        GeoDSL.rotate_drawing(dwg, 90)
 
-        svg = svgutils.transform.fromfile(filename)
-        originalSVG = svgutils.compose.SVG(filename)
-        originalSVG.rotate(90, 500,500)
-        figure = svgutils.compose.Figure(svg.height, svg.width, originalSVG)
-        figure.save(filename)
+        dwg.save()
 
     @staticmethod
     def draw_circle(dwg, element):
-        center = (float(element.center.x), svg_size[1] - float(element.center.y))
+        center = (float(element.center.x), float(element.center.y))
         radius = float(element.radius)
         dwg.add(dwg.circle(center=center, r=radius, fill='none', stroke='orange', stroke_width=1))
 
-
     @staticmethod
-    def draw_point(dwg, element):
-        dwg.add(dwg.circle(center=(float(element.x), svg_size[1] - float(element.y)), r=2, fill='red'))
+    def draw_point(dwg, element, size=3):
+        """
+        Draw a diagonal cross (X) centered at the element.
 
+        Args:
+            dwg: The SVG drawing object
+            element: The point with x and y attributes
+            size: Half-length of the cross arms
+        """
+        x, y = float(element.x), float(element.y)
 
+        # Diagonal line: top-left to bottom-right
+        dwg.add(dwg.line(start=(x - size, y - size), end=(x + size, y + size),
+                         stroke='red', stroke_width=1))
+
+        # Diagonal line: bottom-left to top-right
+        dwg.add(dwg.line(start=(x - size, y + size), end=(x + size, y - size),
+                         stroke='red', stroke_width=1))
+
+def main():
+    dwg = svgwrite.Drawing('test_output.svg', profile='full', size=[700,600])
+
+    geo = GeoDSL()
+    geo.draw_point(dwg, geo.point(200,100))
+    arc = geo.arc_by_center_and_two_points(geo.point(150,150), geo.point(150,200), geo.point(200,150))
+
+    p1 = geo.point(300,370)
+    p2 = geo.point(370,300)
+    arc = geo.arc_by_center_and_two_points(geo.point(300,300), p2, p1)
+    arc.draw(dwg)
+    dwg.save()
+
+if __name__ == '__main__':
+    main()
