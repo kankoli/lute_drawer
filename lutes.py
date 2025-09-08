@@ -194,10 +194,26 @@ class SmallSoundhole_Brussels0164(SmallSoundhole):
 
 
 class TangentParameter(ABC):
-	def __init__(self, line, radius, closest_point):
-		self.line = line
+	def __init__(self, previous_circle, point, radius, closest_point):
+		self.previous_circle = previous_circle
+		self.point = point
 		self.radius = radius
 		self.closest_point = closest_point
+
+	@property
+	def center(self):
+		return self.tangent_circle.center
+
+	def calculate_new_circle(self):
+		self.line = geo.line(self.previous_circle.center, self.point)
+
+		if (isinstance(self.previous_circle, TangentParameter)):
+			previous_circle = self.previous_circle.tangent_circle
+		else:
+			previous_circle = self.previous_circle
+		self.tangent_circle, self.tangent_point = geo.get_tangent_circle(previous_circle, self.line, self.radius, self.closest_point, True)
+
+		return self.tangent_circle, self.tangent_point
 
 class LowerArcBuilder(ABC):
 	''' Superclass for building lower arcs of a lute,
@@ -208,22 +224,21 @@ class LowerArcBuilder(ABC):
 	'''
 	@override
 	def _build_lower_arcs(self):
-		circle_1 = self.top_arc_circle
-		circle_2 = self.bottom_arc_circle
+		# When there are no tangents defined, blend with top circle
+		current_circle = self.top_arc_circle
 
-		current_circle = circle_1
-		tangent_circles = [circle_1]
+		tangent_circles = [self.top_arc_circle]
 		tangent_points = [self.form_top]
 		for tp in self._get_tangent_parameters():
-			tangent_circle, tangent_point = geo.get_tangent_circle(current_circle, tp.line, tp.radius, tp.closest_point, True)
+			tangent_circle, tangent_point = tp.calculate_new_circle()
 			tangent_circles.append(tangent_circle)
 			tangent_points.append(tangent_point)
 
 			current_circle = tangent_circle
 
-		blender_circle, blender_intersection_1, blender_intersection_2 = geo.blend_two_circles(self._get_blender_radius(), current_circle, circle_2)
+		blender_circle, blender_intersection_1, blender_intersection_2 = geo.blend_two_circles(self._get_blender_radius(), current_circle, self.bottom_arc_circle)
 		tangent_circles.append(blender_circle)
-		tangent_circles.append(circle_2)
+		tangent_circles.append(self.bottom_arc_circle)
 		tangent_points.append(blender_intersection_1)
 		tangent_points.append(blender_intersection_2)
 		tangent_points.append(self.form_bottom)
@@ -271,7 +286,7 @@ class SideCircle_TwoUnits(LowerArcBuilder):
 	@override
 	def _get_tangent_parameters(self):
 		super()._get_tangent_parameters()
-		self.tangents.append(TangentParameter(self.centerline, 2 * self.unit, self.form_side))
+		self.tangents.append(TangentParameter(self.top_arc_circle, self.form_center, 2 * self.unit, self.form_side))
 		return self.tangents
 
 class SideStep(LowerArcBuilder):
@@ -290,25 +305,11 @@ class SideStep(LowerArcBuilder):
 		self.connector_1 = geo.line(self.top_arc_finish, self.top_arc_center)
 		self.connector_intersections = geo.intersection(self.connector_1, self.spine)
 		second_arc_center = self.connector_intersections[0] # single intersection
-
 		second_arc_radius = second_arc_center.distance(self.top_arc_finish)
 
 		# Special case where the new circle's center is determined first, in order to calculate the radius.
 		# The superclass will re-calculate the center itself.
-		self.tangents.append(TangentParameter(self.connector_1, second_arc_radius, self.form_bottom))
-
-		return self.tangents
-
-class LavtaLowerArc(LowerArcBuilder):
-	@override
-	def _get_tangent_parameters(self):
-		super()._get_tangent_parameters()
-
-		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 3)[1]
-		line_1 = geo.line(self.top_arc_center, spine_point)
-		radius_1 = self.unit * 4
-
-		self.tangents.append(TangentParameter(line_1, radius_1, self.form_center))
+		self.tangents.append(TangentParameter(self.top_arc_circle, second_arc_center, second_arc_radius, self.form_bottom))
 
 		return self.tangents
 
@@ -322,7 +323,7 @@ class Lute(ABC):
 		self._base_construction()
 
 		self._make_spine_points()
-		self.__make_bottom_arc_circle()
+		self._make_bottom_arc_circle()
 		self._make_soundhole()
 		self._build_lower_arcs()
 		self.__generate_arcs()
@@ -364,7 +365,7 @@ class Lute(ABC):
 	def _make_spine_points(self):
 		pass
 
-	def __make_bottom_arc_circle(self):
+	def _make_bottom_arc_circle(self):
 		self.bottom_arc_circle = geo.circle_by_center_and_point(self.form_top, self.form_bottom)
 
 	@abstractmethod
@@ -575,11 +576,16 @@ class LuteType4(TopArc_Type4, Lute):
 		self.top_2 = geo.translate_point_x(self.form_top, self.unit)
 
 
-class ManolLavta(LavtaLowerArc, SimpleBlend, Soundhole_GoldenRatiofOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
+class ManolLavta(SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
 	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
 	@override
 	def _get_unit_in_mm(self):
 		return 300 / 4
+
+	@override
+	def _make_bottom_arc_circle(self):
+		bottom_arc_center = geo.translate_point_x(self.form_top, -4 * self.unit)
+		self.bottom_arc_circle = geo.circle_by_center_and_point(bottom_arc_center, self.form_bottom)
 
 	@override
 	def _make_spine_points(self):
@@ -592,15 +598,37 @@ class ManolLavta(LavtaLowerArc, SimpleBlend, Soundhole_GoldenRatiofOfSegment, So
 		self.bridge = geo.translate_point_x(self.form_bottom, -self.vertical_unit) # negation is important
 
 	@override
-	def _get_blender_radius(self):
-		return self.vertical_unit
-
-	@override
 	def _set_measurements(self):
 		super()._set_measurements()
 		self.measurements.append(("Soundhole radius:", self._get_soundhole_radius()))
 		# self.measurements.append(("Soundhole segment half:", self.halfsegment_length))
 		self.measurements.append(("Vertical Unit:", self.vertical_unit))
+
+	@override
+	def _get_tangent_parameters(self):
+		super()._get_tangent_parameters()
+
+		tangent = self.top_arc_circle
+		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 2)[-1]
+		radius = self.unit * 5
+		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
+		self.tangents.append(tangent)
+
+		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 3)[-1]
+		radius = self.unit * 9
+		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
+		self.tangents.append(tangent)
+
+		spine_point = geo.divide_distance(self._get_soundhole_center(), self.form_center, 8)[-1]
+		radius = self.unit * 3
+		tangent = TangentParameter(tangent, spine_point, radius, self.form_center)
+		self.tangents.append(tangent)
+
+		return self.tangents
+
+	@override
+	def _get_blender_radius(self):
+		return self.unit
 
 class ManolLavta_Type3(LuteType3, ManolLavta):
 	pass
