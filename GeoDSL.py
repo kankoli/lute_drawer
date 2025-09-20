@@ -65,6 +65,23 @@ class GeoArc:
         dwg.add(arc_path)
         return arc_path
 
+    def sample_points(self, n=100):
+        """Return n points along the arc as a list of sympy.Point2D."""
+        cx, cy = float(self.center.x), float(self.center.y)
+        r = float(self.radius)
+
+        # unwrap angles to make a continuous sweep
+        a1 = np.deg2rad(self.angle1)
+        a2 = np.deg2rad(self.angle2)
+        delta = (a2 - a1) % (2*np.pi)
+        if delta > np.pi:
+            delta -= 2*np.pi  # choose shorter direction
+
+        ts = np.linspace(0, 1, n)
+        angles = a1 + ts * delta
+        return [Point(cx + r*np.cos(ang), cy + r*np.sin(ang)) for ang in angles]
+
+
 class GeoDSL:
     def __init__(self, display_size):
         self.display_size = display_size

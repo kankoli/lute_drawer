@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import final, override
 from GeoDSL import GeoDSL, Point, GeoArc
+from geo_instance import geo, display_size
 import os.path
 import sympy
 
-# Create an instance of GeoDSL
-display_size = 100
-geo = GeoDSL(display_size)
+from abc import ABC, abstractmethod
+import numpy as np
 
 class TopArc(ABC):
 	@abstractmethod
@@ -592,6 +592,7 @@ class LuteType4(TopArc_Type4, Lute):
 
 class ManolLavta(SimpleBlend, Soundhole_OneThirdOfSegment, SoundholeAt_NeckBridgeMidpoint, LuteType4, Neck_ThruTop2):
 	# https://www.mikeouds.com/messageboard/viewthread.php?tid=12255
+	# https://www.mikeouds.com/messageboard/files.php?pid=80797&aid=18637
 
 	@override
 	def _get_unit_in_mm(self):
