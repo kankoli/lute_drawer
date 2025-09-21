@@ -66,24 +66,12 @@ def circle_through_three_points_2d(P1, P2, P3):
     C = mid12 + t*n12; r = float(np.linalg.norm(C-P1))
     return C, r
 
-def _sample_geoarc_xy(arc, n=300):
-    cx, cy = float(arc.center.x), float(arc.center.y)
-    r = float(arc.radius)
-    a1_deg = float(arc.angle1); a2_deg = float(arc.angle2)
-    delta = a2_deg - a1_deg
-    if delta > 180: delta -= 360
-    elif delta < -180: delta += 360
-    ts = np.linspace(0.0, 1.0, n)
-    ang = np.deg2rad(a1_deg + ts*delta)
-    x = cx + r*np.cos(ang); y = cy + r*np.sin(ang)
-    return np.column_stack([x,y])
-
 def _sample_soundboard_outline(lute, samples_per_arc=300):
     pts = []
     for arc in getattr(lute, 'final_arcs', []):
-        pts.append(_sample_geoarc_xy(arc, samples_per_arc))
+        pts.append(arc.sample_points(samples_per_arc))
     for arc in getattr(lute, 'final_reflected_arcs', []):
-        pts.append(_sample_geoarc_xy(arc, samples_per_arc))
+        pts.append(arc.sample_points(samples_per_arc))
     if not pts: return np.empty((0,2))
     return np.vstack(pts)
 
@@ -132,126 +120,9 @@ def spine_point_at_X(lute, X: float):
     return y0 + t*(y1-y0)
 
 # ---------------------------------------------------------------------
-# Top curve: Side-profile-driven with per-control shaping (ONLY STRATEGY)
+# Top curve construction
 # ---------------------------------------------------------------------
 
-def _make_top_curve_from_side_percontrol(
-    lute,
-    gammas: dict,                  # {"neck_joint":..., "soundhole_center":..., "form_center":..., "bridge":...}
-    widths: dict | None = None,    # absolute widths or ("span_frac", f)
-    width_factor: float = 0.9,     # auto width scaler
-    amplitude: float | None = None,# global amplitude in Z-units (None → default from class)
-    n_samples: int = 300,
-    margin: float = 1e-3,
-    gate_N_start: float = 0.02,
-    gate_N_full: float  = 0.08,
-    max_exponent_delta: float = 0.8,
-    kernel: str = "cauchy",        # "cauchy" (broad tails) or "gauss"
-    debug: bool = False
-):
-    # 1) Sample normalized half-width N(x) from side
-    xL = float(lute.form_top.x); xR = float(lute.form_bottom.x)
-    span = xR - xL; eps = abs(span)*float(margin)
-    xs = np.linspace(xL + eps, xR - eps, int(n_samples))
-
-    W = []
-    for X in xs:
-        hit = extract_side_points_at_X(lute, X)
-        if hit is None:
-            W.append(0.0); continue
-        L, R, _ = hit
-        y_spine = spine_point_at_X(lute, X)
-        W.append(max(abs(float(L[1])-y_spine), abs(float(R[1])-y_spine)))
-    W = np.asarray(W, float)
-    if W.size == 0 or float(W.max()) < 1e-12:
-        return lambda _x: 0.0
-    W[0] = 0.0; W[-1] = 0.0
-    N = W / float(W.max())
-
-    # 2) Controls: positions, validate keys, sort by X
-    ctrl_x_all = {
-        "neck_joint":       float(lute.point_neck_joint.x),
-        "soundhole_center": float(lute._get_soundhole_center().x),
-        "form_center":      float(lute.form_center.x),
-        "bridge":           float(lute.bridge.x),
-    }
-    unknown = [k for k in gammas.keys() if k not in ctrl_x_all]
-    if unknown:
-        raise KeyError(f"Unknown SHAPE_GAMMAS keys: {unknown}. "
-                       f"Use only {list(ctrl_x_all.keys())}.")
-    keys = [k for k in ("neck_joint","soundhole_center","form_center","bridge") if k in gammas]
-    if not keys:
-        if debug: print("No active gamma keys; top curve equals raw side profile scaled by amplitude.")
-        def z_top_lin(x): 
-            return float((amplitude or 1.0) * np.interp(float(x), xs, N, left=0.0, right=0.0))
-        return z_top_lin
-
-    xc = np.array([ctrl_x_all[k] for k in keys], float)
-    gc = np.array([float(gammas[k]) for k in keys], float)
-    order = np.argsort(xc); xc = xc[order]; gc = gc[order]
-    keys_sorted = [keys[i] for i in order]
-
-    # 3) Resolve widths to absolute (allow ("span_frac", f)); else auto by neighbor spacing
-    if widths is None: widths = {}
-    span_len = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
-    def _abs_width_for(k):
-        if k not in widths: return None
-        val = widths[k]
-        if isinstance(val, (int,float)): return float(val)
-        if isinstance(val,(tuple,list)) and len(val)==2 and val[0]=="span_frac":
-            return float(val[1])*span_len
-        return None
-    widths_abs = {k: _abs_width_for(k) for k in keys_sorted}
-
-    sig = []
-    for i, k in enumerate(keys_sorted):
-        if widths_abs.get(k, None) and widths_abs[k] > 0.0:
-            sig.append(float(widths_abs[k]))
-        else:
-            left_gap  = xc[i] - (xc[i-1] if i-1 >= 0 else xL)
-            right_gap = (xc[i+1] if i+1 < len(xc) else xR) - xc[i]
-            local = 0.5*(abs(left_gap)+abs(right_gap))
-            sig.append(max(1e-6, float(width_factor)*local))
-    sig = np.array(sig, float)
-
-    if debug:
-        xNpk = xs[int(np.argmax(N))]
-        print("Active gamma controls (sorted):")
-        for k, xk, s in zip(keys_sorted, xc, sig):
-            print(f"  {k:17s} X={xk:.3f}  width≈{s:.3f}  gamma={gammas[k]:.3f}")
-        print(f"N(x) peak near X={xNpk:.3f}")
-
-    # 4) Normalized, log-space blend for E(x) (geometric mean of gammas)
-    Xdiff2 = (xs[:,None] - xc[None,:])**2
-    if kernel == "gauss":
-        w = np.exp(-Xdiff2 / (2.0*(sig[None,:]**2 + 1e-12)))
-    else:  # cauchy
-        w = 1.0 / (1.0 + (Xdiff2 / (sig[None,:]**2 + 1e-12)))
-    wsum = np.sum(w, axis=1, keepdims=True) + 1e-12
-    Wnorm = w / wsum
-    log_gammas = np.log(np.clip(gc[None,:], 1e-6, None))
-    logE = np.sum(Wnorm * log_gammas, axis=1)
-    E = np.exp(logE)
-    E = np.clip(E, 1.0 - float(max_exponent_delta), 1.0 + float(max_exponent_delta))
-
-    # 5) End gating (optional; set both gates to 0.0 to disable)
-    if gate_N_start > 0.0 or gate_N_full > 0.0:
-        a = float(gate_N_start); b = float(gate_N_full)
-        if b <= a + 1e-9: b = min(1.0, a + 1e-3)
-        t = (N - a) / (b - a); t = np.clip(t, 0.0, 1.0)
-        gate = t*t*(3 - 2*t)  # smoothstep
-        E = 1.0 + gate*(E - 1.0)
-
-    # 6) Apply exponent, then fixed global amplitude
-    N_shaped = N**E
-    A = float(amplitude if amplitude is not None else 1.0)
-
-    def z_top(x):
-        return float(A * np.interp(float(x), xs, N_shaped, left=0.0, right=0.0))
-
-    return z_top
-
-# Unified TopCurve base + Single strategy class
 class TopCurve:
     name = "base"
     @classmethod
@@ -296,43 +167,137 @@ class SideProfilePerControlTopCurve(TopCurve):
     KERNEL = "cauchy"              # "cauchy" or "gauss"
 
     @classmethod
-    def _resolve_widths(cls, lute):
-        if not cls.SHAPE_WIDTHS: return None
-        span = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
-        out = {}
-        for key, val in cls.SHAPE_WIDTHS.items():
-            if isinstance(val,(int,float)): out[key] = float(val)
-            elif isinstance(val,(tuple,list)) and len(val)==2 and val[0]=="span_frac":
-                out[key] = float(val[1]) * span
-        return out
-
-    @classmethod
-    def _default_amplitude(cls, lute) -> float:
-        u = float(getattr(lute, "unit", 1.0))
-        if cls.AMPLITUDE_MODE == "units" and cls.AMPLITUDE_UNITS is not None:
-            return float(cls.AMPLITUDE_UNITS) * u
-        # default: use the maximum of the preset depths
-        mx = max(cls.DEPTHS.values()) if cls.DEPTHS else 1.0
-        return float(mx) * u
-
-    @classmethod
     def build(cls, lute):
         if not cls.SHAPE_GAMMAS:
             raise RuntimeError("SHAPE_GAMMAS is empty for this top-curve class.")
-        return _make_top_curve_from_side_percontrol(
-            lute=lute,
-            gammas=cls.SHAPE_GAMMAS,
-            widths=cls._resolve_widths(lute),
-            width_factor=cls.WIDTH_FACTOR,
-            amplitude=cls._default_amplitude(lute),
-            n_samples=cls.SAMPLES,
-            margin=1e-3,
-            gate_N_start=cls.GATE_N_START,
-            gate_N_full=cls.GATE_N_FULL,
-            max_exponent_delta=cls.MAX_EXPONENT_DELTA,
-            kernel=cls.KERNEL,
-            debug=False
-        )
+
+        # --- Resolve widths ---
+        widths = None
+        if cls.SHAPE_WIDTHS:
+            span = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
+            widths = {}
+            for key, val in cls.SHAPE_WIDTHS.items():
+                if isinstance(val,(int,float)):
+                    widths[key] = float(val)
+                elif isinstance(val,(tuple,list)) and len(val)==2 and val[0]=="span_frac":
+                    widths[key] = float(val[1]) * span
+
+        # --- Resolve amplitude ---
+        u = float(getattr(lute, "unit", 1.0))
+        if cls.AMPLITUDE_MODE == "units" and cls.AMPLITUDE_UNITS is not None:
+            amplitude = float(cls.AMPLITUDE_UNITS) * u
+        else:
+            mx = max(cls.DEPTHS.values()) if cls.DEPTHS else 1.0
+            amplitude = float(mx) * u
+
+        # === Begin inlined _make_top_curve_from_side_percontrol ===
+        gammas      = cls.SHAPE_GAMMAS
+        width_factor= cls.WIDTH_FACTOR
+        n_samples   = cls.SAMPLES
+        margin      = 1e-3
+        gate_N_start= cls.GATE_N_START
+        gate_N_full = cls.GATE_N_FULL
+        max_exponent_delta = cls.MAX_EXPONENT_DELTA
+        kernel      = cls.KERNEL
+
+        # 1) Sample normalized half-width N(x) from side
+        xL = float(lute.form_top.x); xR = float(lute.form_bottom.x)
+        span = xR - xL; eps = abs(span)*float(margin)
+        xs = np.linspace(xL + eps, xR - eps, int(n_samples))
+
+        W = []
+        for X in xs:
+            hit = extract_side_points_at_X(lute, X)
+            if hit is None:
+                W.append(0.0); continue
+            L, R, _ = hit
+            y_spine = spine_point_at_X(lute, X)
+            W.append(max(abs(float(L[1])-y_spine), abs(float(R[1])-y_spine)))
+        W = np.asarray(W, float)
+        if W.size == 0 or float(W.max()) < 1e-12:
+            return lambda _x: 0.0
+        W[0] = 0.0; W[-1] = 0.0
+        N = W / float(W.max())
+
+        # 2) Controls
+        ctrl_x_all = {
+            "neck_joint":       float(lute.point_neck_joint.x),
+            "soundhole_center": float(lute._get_soundhole_center().x),
+            "form_center":      float(lute.form_center.x),
+            "bridge":           float(lute.bridge.x),
+        }
+        unknown = [k for k in gammas.keys() if k not in ctrl_x_all]
+        if unknown:
+            raise KeyError(f"Unknown SHAPE_GAMMAS keys: {unknown}. "
+                           f"Use only {list(ctrl_x_all.keys())}.")
+        keys = [k for k in ("neck_joint","soundhole_center","form_center","bridge") if k in gammas]
+        if not keys:
+            def z_top_lin(x): 
+                return float(amplitude * np.interp(float(x), xs, N, left=0.0, right=0.0))
+            return z_top_lin
+
+        xc = np.array([ctrl_x_all[k] for k in keys], float)
+        gc = np.array([float(gammas[k]) for k in keys], float)
+        order = np.argsort(xc); xc = xc[order]; gc = gc[order]
+        keys_sorted = [keys[i] for i in order]
+
+        # 3) Widths
+        sig = []
+        for i, k in enumerate(keys_sorted):
+            if widths and widths.get(k, None) and widths[k] > 0.0:
+                sig.append(float(widths[k]))
+            else:
+                left_gap  = xc[i] - (xc[i-1] if i-1 >= 0 else xL)
+                right_gap = (xc[i+1] if i+1 < len(xc) else xR) - xc[i]
+                local = 0.5*(abs(left_gap)+abs(right_gap))
+                sig.append(max(1e-6, float(width_factor)*local))
+        sig = np.array(sig, float)
+
+        # 4) Log-space blend
+        Xdiff2 = (xs[:,None] - xc[None,:])**2
+        if kernel == "gauss":
+            w = np.exp(-Xdiff2 / (2.0*(sig[None,:]**2 + 1e-12)))
+        else:  # cauchy
+            w = 1.0 / (1.0 + (Xdiff2 / (sig[None,:]**2 + 1e-12)))
+        Wnorm = w / (np.sum(w, axis=1, keepdims=True) + 1e-12)
+        log_gammas = np.log(np.clip(gc[None,:], 1e-6, None))
+        logE = np.sum(Wnorm * log_gammas, axis=1)
+        E = np.clip(np.exp(logE), 1.0 - float(max_exponent_delta), 1.0 + float(max_exponent_delta))
+
+        # 5) End gating
+        if gate_N_start > 0.0 or gate_N_full > 0.0:
+            a = float(gate_N_start); b = float(gate_N_full)
+            if b <= a + 1e-9: b = min(1.0, a + 1e-3)
+            t = (N - a) / (b - a); t = np.clip(t, 0.0, 1.0)
+            gate = t*t*(3 - 2*t)  # smoothstep
+            E = 1.0 + gate*(E - 1.0)
+
+        # 6) Apply exponent + amplitude
+        N_shaped = N**E
+        def z_top(x):
+            return float(amplitude * np.interp(float(x), xs, N_shaped, left=0.0, right=0.0))
+        return z_top
+
+class LuteCurve(SideProfilePerControlTopCurve):
+    # 1) Global depth
+    AMPLITUDE_MODE  = "units"
+    AMPLITUDE_UNITS = 1.750
+
+    # 2) Local shaping (start subtle!)
+    SHAPE_GAMMAS = {
+        "neck_joint":       0.85, # fuller
+        "soundhole_center": 0.80,
+        "form_center":      1.00,
+        "bridge":           1.00,
+    }
+
+    # 3) Influence widths (broad, smooth)
+    SHAPE_WIDTHS = {
+        "form_center":      ("span_frac", 0.45),
+        "soundhole_center": ("span_frac", 0.35),
+        "bridge":           ("span_frac", 0.30),
+        "neck_joint":       ("span_frac", 0.25),
+    }
 
 # ---------------------------------------------------------------------
 # Ribs
@@ -424,8 +389,6 @@ def build_ribs_above_soundboard(sections, n_ribs=12):
 # Build bowl
 # ---------------------------------------------------------------------
 
-class TopCurveBase: pass  # marker
-
 def _resolve_top_curve(lute, top_curve):
     """
     Resolve to a callable z_top(x):
@@ -449,8 +412,7 @@ def _resolve_top_curve(lute, top_curve):
         pass
     return SideProfilePerControlTopCurve.build(lute)
 
-def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=False,
-                        top_curve=None):
+def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=False, top_curve=None):
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
     z_top = _resolve_top_curve(lute, top_curve)
 
@@ -605,44 +567,20 @@ def plot_bowl(lute, sections, ribs, show_apexes=False, highlight_neck_joint=True
 
 def main():
     try:
-        from lutes import TurkishOudComplexLowerBout
+        import lutes
     except Exception:
         print("Demo skipped: TurkishOudComplexLowerBout not available."); return
 
-    lute = TurkishOudComplexLowerBout(); lute.draw()
-
-    class MyCurve(SideProfilePerControlTopCurve):
-        # 1) Global depth
-        AMPLITUDE_MODE  = "units"     # "units" = use exact millimeters (or your unit)
-        AMPLITUDE_UNITS = 1.750       # e.g., ~180 mm max depth (pick your target)
-
-        # 2) Local shaping (start subtle!)
-        SHAPE_GAMMAS = {
-            "neck_joint":       0.85,  # slightly flatter near neck (shallower)
-            "soundhole_center": 0.80,  # flatter under SH
-            "form_center":      1.00,  # fuller around mid-bowl
-            "bridge":           1.00,  # neutral at bridge
-        }
-
-        # 3) Influence widths (broad, smooth)
-        SHAPE_WIDTHS = {
-            "form_center":      ("span_frac", 0.45),
-            "soundhole_center": ("span_frac", 0.35),
-            "bridge":           ("span_frac", 0.30),
-            "neck_joint":       ("span_frac", 0.25),
-        }
-
-        # Optional: leave these as-is while tuning
-        GATE_N_START = 0.0
-        GATE_N_FULL  = 0.0
-        KERNEL = "cauchy"      # broader tails than "gauss"
-        SAMPLES = 400
+    lute = lutes.ManolLavta(); lute.draw_all()
 
     sections, ribs = build_bowl_for_lute(
         lute,
         n_ribs=23,
         n_sections=100,
-        top_curve=MyCurve
+        top_curve=LuteCurve
     )
     plot_bowl(lute, sections, ribs)
 
+
+if __name__ == '__main__':
+    main()
