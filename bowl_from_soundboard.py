@@ -646,5 +646,3 @@ def main():
     )
     plot_bowl(lute, sections, ribs)
 
-if __name__ == '__main__':
-    main()
