@@ -575,8 +575,8 @@ def main():
 
     sections, ribs = build_bowl_for_lute(
         lute,
-        n_ribs=23,
-        n_sections=100,
+        n_ribs=13,
+        n_sections=500,
         top_curve=LuteCurve
     )
     plot_bowl(lute, sections, ribs)
