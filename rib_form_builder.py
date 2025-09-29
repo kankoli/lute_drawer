@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from bowl_from_soundboard import set_axes_equal_3d, build_bowl_for_lute, LuteCurve
+from bowl_from_soundboard import set_axes_equal_3d, build_bowl_for_lute, MidCurve
 
 EPS = 1e-9
 
@@ -39,27 +39,14 @@ def _intersect_line_plane_p1p2(p1, p2, p0, nrm):
     return _intersect_line_plane_pd(p1, p2 - p1, p0, nrm)
 
 
-def rib_surface_extended(
-    outline1, outline2,
-    plane_offset=10.0,
-    allowance_left=0.0,
-    allowance_right=0.0,
-    end_extension=10.0
-):
+def rib_surface_extended(outline1, outline2, plane_offset=10.0, allowance_left=0.0, allowance_right=0.0, end_extension=10.0):
     """
     Build rib surface extended to two parallel planes (left/right).
-    Enhancements:
-      - Ribbon continues as a ribbon past the tips (end_extension).
-      - Independent left/right allowances.
-    Returns polygons for the extended surface.
+    Returns quads normalized into a local frame (X=along, Y=across, Z=normal),
+    translated so the widest connector midpoint is at (0,0,0).
     """
-    # normalize first
-    outline1, outline2 = normalize_rib(outline1, outline2)
-
-    # now use ONLY these normalized outlines to build everything else
-    rib1 = np.array(outline1)
-    rib2 = np.array(outline2)
-
+    rib1 = np.array(outline1, float)
+    rib2 = np.array(outline2, float)
     n = min(len(rib1), len(rib2))
     rib1, rib2 = rib1[:n], rib2[:n]
 
@@ -139,95 +126,76 @@ def rib_surface_extended(
     quads.append(np.array(strips[0]))
     quads.append(np.array(strips[-1]))
 
-    return quads
+    quads_norm = normalize_quads(rib1, rib2, quads)
+    return quads_norm
 
-def normalize_rib(outline1: np.ndarray, outline2: np.ndarray):
+def normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.ndarray]):
     """
-    Rotate/translate so the *widest connector* lies on the Y-axis (x=0, z=0):
-      - 'across' (rib2 - rib1 at widest) → +Y
-      - 'along'  (rib1 tangent there)    → +X
-      - 'normal'                         → +Z
-    Then translate so that connector's midpoint has x=0 and z=0.
+    Normalize a rib surface given its outlines + quads:
+      - Find widest connector → +Y
+      - Tangent at that index → +X
+      - Normal → +Z
+      - Translate so widest connector midpoint → (0,0,0)
+    Returns transformed quads.
     """
     outline1 = np.asarray(outline1, float)
     outline2 = np.asarray(outline2, float)
     if outline1.shape != outline2.shape or outline1.ndim != 2 or outline1.shape[1] != 3:
-        raise ValueError("normalize_rib expects two (N,3) arrays with the same shape")
+        raise ValueError("normalize_quads expects two (N,3) outlines with same shape")
 
-    # 1) widest connector (side-to-side, same index)
+    # widest connector
     connectors = outline2 - outline1
-    if connectors.size == 0:
-        return outline1, outline2
     idx = int(np.argmax(np.linalg.norm(connectors, axis=1)))
-    across = connectors[idx]
-    across /= (np.linalg.norm(across) + EPS)
+    across = connectors[idx] / (np.linalg.norm(connectors[idx]) + EPS)
 
-    # 2) along direction from rib1 tangent at the same index
+    # tangent direction (along)
     if idx < len(outline1) - 1:
         along = outline1[idx + 1] - outline1[idx]
     else:
         along = outline1[idx] - outline1[idx - 1]
     along /= (np.linalg.norm(along) + EPS)
 
-    # 3) local orthonormal basis (X'=along, Y'=across, Z'=normal)
+    # normal
     z_local = np.cross(along, across)
     nz = np.linalg.norm(z_local)
     if nz < EPS:
-        # extremely degenerate; just return as-is
-        return outline1, outline2
+        return quads
     z_local /= nz
     y_local = across
     x_local = np.cross(y_local, z_local)
     x_local /= (np.linalg.norm(x_local) + EPS)
 
-    # Rotation: local→global = [x y z]; we want global→local, so transpose
+    # rotation (global→local)
     R = np.vstack([x_local, y_local, z_local]).T
     R_inv = R.T
 
-    def to_local(A: np.ndarray) -> np.ndarray:
+    def to_local(A):
         return (R_inv @ A.T).T
 
-    o1 = to_local(outline1)
-    o2 = to_local(outline2)
+    # transform all quads
+    q_local = [to_local(q) for q in quads]
 
-    # Ensure across points from rib1→rib2 is +Y in local frame (optional)
-    if o2[idx, 1] < o1[idx, 1]:
-        # flip X and Y to maintain right-handedness while making across point +Y
-        o1[:, :2] *= -1.0
-        o2[:, :2] *= -1.0
+    # translate so connector midpoint at idx → (0,0,0)
+    mid = 0.5 * (to_local(outline1)[idx] + to_local(outline2)[idx])
+    q_shifted = [q - mid for q in q_local]
 
-    # 4) translate so the *widest connector* lies on Y-axis: x=0, z=0
-    mid_x = 0.5 * (o1[idx, 0] + o2[idx, 0])
-    mid_z = 0.5 * (o1[idx, 2] + o2[idx, 2])
-    o1[:, 0] -= mid_x
-    o2[:, 0] -= mid_x
-    o1[:, 2] -= mid_z
-    o2[:, 2] -= mid_z
+    return q_shifted
 
-    return o1, o2
 
-def plot_extended_surface(
-    ribs,
-    plane_offset=10.0,
-    allowance_left=0.0,
-    allowance_right=0.0,
-    end_extension=10.0,
-    spacing=150.0,
-    title="All Extended Rib Surfaces (Normalized Surfaces Only)"
-):
+def plot_extended_surface(ribs, title, plane_offset=10.0, allowance_left=0.0, allowance_right=0.0, end_extension=10.0, spacing=200.0):
     """
-    Plot extended rib surfaces for all ribs, normalized and arranged side by side.
-    Only the rib surfaces and outlines are drawn (no block underneath).
+    Plot extended rib surfaces for all ribs.
+    Assumes rib_surface_extended already returns normalized quads.
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
-    all_quads = []
+    plotted_pts = []
 
-    # --- build all ribs first ---
     for idx in range(len(ribs) - 1):
         rib1, rib2 = ribs[idx], ribs[idx + 1]
 
+        # rib_surface_extended already normalizes
         quads = rib_surface_extended(
             rib1, rib2,
             plane_offset=plane_offset,
@@ -236,35 +204,21 @@ def plot_extended_surface(
             end_extension=end_extension
         )
 
-        all_quads.append((idx, quads))
-
-    # --- global Z and X alignment ---
-    all_pts = np.vstack([q for _, quads in all_quads for q in quads])
-    global_zmin = np.min(all_pts[:, 2])
-    global_xmin = np.min(all_pts[:, 0])
-
-    # --- normalize ribs individually in Y ---
-    normalized_ribs = []
-    for idx, quads in all_quads:
-        rib_ymin = np.min(np.vstack(quads)[:, 1])
-        quads_norm = [q - np.array([global_xmin, rib_ymin, 0]) for q in quads]
-        normalized_ribs.append((idx, quads_norm))
-
-    # --- plot ribs ---
-    plotted_pts = []
-    for idx, quads in normalized_ribs:
-        shift = np.array([0, idx * spacing, -global_zmin])
+        # apply spacing only
+        shift = np.array([0, idx * spacing, 0])
         quads_shifted = [q + shift for q in quads]
 
-        # surfaces
         for q in quads_shifted:
             ax.add_collection3d(
-                Poly3DCollection([q], alpha=0.6,
-                                 facecolor="lightblue", edgecolor="k", linewidths=0.3)
+                Poly3DCollection([q],
+                                 alpha=0.6,
+                                 facecolor="lightblue",
+                                 edgecolor="k",
+                                 linewidths=0.3)
             )
         plotted_pts.extend(quads_shifted)
 
-    # --- equal aspect ---
+    # equal aspect ratio
     pts = np.vstack(plotted_pts)
     set_axes_equal_3d(ax, pts[:, 0], pts[:, 1], pts[:, 2])
 
@@ -275,25 +229,24 @@ def plot_extended_surface(
     plt.show()
     plt.close(fig)
 
-
 if __name__ == "__main__":
     import lutes
 
     lute = lutes.ManolLavta()
     lute.draw_all()
 
-    sections, ribs = build_bowl_for_lute(
+    _, ribs = build_bowl_for_lute(
         lute,
         n_ribs=13,
         n_sections=30,
-        top_curve=LuteCurve
+        top_curve=MidCurve
     )
 
     plot_extended_surface(
-        ribs,
+        ribs[1:4],
         plane_offset=15.0,
-        allowance_left=2.0,
-        allowance_right=4.0,
+        allowance_left=50.0,
+        allowance_right=50.0,
         end_extension=12.0,
-        title="Rib 3 Extended with Endpoint Caps + Overshoot"
+        title="Rib form surfaces"
     )

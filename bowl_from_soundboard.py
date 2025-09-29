@@ -451,16 +451,11 @@ def _resolve_top_curve(lute, top_curve):
     """
     Resolve to a callable z_top(x):
       - None: use SideProfilePerControlTopCurve defaults
-      - str:  "side" or "side_per_control"
       - class / instance: SideProfilePerControlTopCurve (or subclass)
       - callable: use as-is
     """
     if callable(top_curve) and not isinstance(top_curve, type):
         return top_curve
-    if isinstance(top_curve, str):
-        if top_curve in ("side", "side_per_control"):
-            return SideProfilePerControlTopCurve.build(lute)
-        raise ValueError("Unknown top_curve string. Use 'side' or 'side_per_control'.")
     try:
         if isinstance(top_curve, type) and issubclass(top_curve, TopCurve):
             return top_curve.build(lute)
