@@ -66,7 +66,7 @@ def circle_through_three_points_2d(P1, P2, P3):
     C = mid12 + t*n12; r = float(np.linalg.norm(C-P1))
     return C, r
 
-def _sample_soundboard_outline(lute, samples_per_arc=300):
+def _sample_soundboard_outline(lute, samples_per_arc):
     pts = []
     for arc in getattr(lute, 'final_arcs', []):
         pts.append(arc.sample_points(samples_per_arc))
@@ -278,7 +278,44 @@ class SideProfilePerControlTopCurve(TopCurve):
             return float(amplitude * np.interp(float(x), xs, N_shaped, left=0.0, right=0.0))
         return z_top
 
-class LuteCurve(SideProfilePerControlTopCurve):
+class SimpleAmplitudeCurve(SideProfilePerControlTopCurve):
+    # 1) Global depth
+    AMPLITUDE_MODE  = "units"
+    AMPLITUDE_UNITS = 1.75
+
+    # 2) Local shaping (start subtle!)
+    SHAPE_GAMMAS = {
+        "neck_joint":       1.00,
+        "soundhole_center": 1.00,
+        "form_center":      1,
+        "bridge":           1,
+    }
+
+
+
+class DeepBackCurve(SideProfilePerControlTopCurve):
+    # 1) Global depth
+    AMPLITUDE_MODE  = "units"
+    AMPLITUDE_UNITS = 2
+
+    # 2) Local shaping (start subtle!)
+    SHAPE_GAMMAS = {
+        "neck_joint":       1.00,
+        "soundhole_center": 1.00,
+        "form_center":      0.80,
+        "bridge":           0.80,
+    }
+
+    # 3) Influence widths (broad, smooth)
+    SHAPE_WIDTHS = {
+        "form_center":      ("span_frac", 0.45),
+        "soundhole_center": ("span_frac", 0.35),
+        "bridge":           ("span_frac", 0.30),
+        "neck_joint":       ("span_frac", 0.25),
+    }
+
+
+class MidCurve(SideProfilePerControlTopCurve):
     # 1) Global depth
     AMPLITUDE_MODE  = "units"
     AMPLITUDE_UNITS = 1.750
@@ -289,6 +326,27 @@ class LuteCurve(SideProfilePerControlTopCurve):
         "soundhole_center": 0.80,
         "form_center":      1.00,
         "bridge":           1.00,
+    }
+
+    # 3) Influence widths (broad, smooth)
+    SHAPE_WIDTHS = {
+        "form_center":      ("span_frac", 0.45),
+        "soundhole_center": ("span_frac", 0.35),
+        "bridge":           ("span_frac", 0.30),
+        "neck_joint":       ("span_frac", 0.25),
+    }
+
+class FlatBackCurve(SideProfilePerControlTopCurve):
+    # 1) Global depth
+    AMPLITUDE_MODE  = "units"
+    AMPLITUDE_UNITS = 1.45
+
+    # 2) Local shaping (start subtle!)
+    SHAPE_GAMMAS = {
+        "neck_joint":       0.65, # fuller
+        "soundhole_center": 0.70,
+        "form_center":      1.20,
+        "bridge":           1.20,
     }
 
     # 3) Influence widths (broad, smooth)
@@ -475,6 +533,42 @@ def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=Fal
 # ---------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------
+
+def _soundboard_half_profile_curve(lute, samples_per_arc=500, rotate=True, y_axis=300):
+    """Return 3D coords (X,Y,Z) for one half of the soundboard outline.
+    If rotate=True, rotate -90° about the spine axis (X, Y=y_axis, Z=0)."""
+    pts = []
+    for arc in reversed(getattr(lute, 'final_arcs', [])):
+        samples = arc.sample_points(samples_per_arc)
+        pts.extend(samples)
+    if not pts:
+        return np.empty((0, 3))
+    outline = np.vstack(pts)  # shape (N,2), (X,Y)
+
+    X2d = outline[:,0]
+    Y2d = outline[:,1]
+    Z2d = np.zeros_like(X2d)
+
+    if rotate:
+        # Translate relative to spine axis
+        Yt = Y2d - y_axis
+        Zt = np.zeros_like(Yt)
+
+        # Rotate –90° about X: (Yt,Zt) → (0, -Yt)
+        Yrot = np.zeros_like(Yt)
+        Zrot = -Yt
+
+        # Translate back
+        Y3d = Yrot + y_axis
+        Z3d = Zrot
+        X3d = X2d
+    else:
+        X3d = X2d
+        Y3d = Y2d
+        Z3d = Z2d
+
+    return np.column_stack([X3d, Y3d, Z3d])
+
 def plot_bowl(lute, sections, ribs, show_apexes=False, highlight_neck_joint=True):
     """
     Plot the 3D lute bowl: ribs + section circles + (optionally) apex points.
@@ -545,6 +639,12 @@ def plot_bowl(lute, sections, ribs, show_apexes=False, highlight_neck_joint=True
             ax.plot(Xc, Yc, Zc, color="#8a2be2", lw=2.5, alpha=0.9,
                     label=f"section @ X≈{float(x_sec):.1f} (nearest neck)")
 
+    # --- Overlay original soundboard over the top curve ---
+    sb_profile = _soundboard_half_profile_curve(lute)
+    if sb_profile.size:
+        ax.plot(sb_profile[:,0], sb_profile[:,1], sb_profile[:,2],
+                color="darkred", lw=2.0, alpha=0.9, label="Soundboard profile (offset)")
+
     # --- Labels, aspect ---
     ax.set_xlabel("X (spine)")
     ax.set_ylabel("Y (width)")
@@ -577,7 +677,7 @@ def main():
         lute,
         n_ribs=13,
         n_sections=500,
-        top_curve=LuteCurve
+        top_curve=MidCurve
     )
     plot_bowl(lute, sections, ribs)
 
