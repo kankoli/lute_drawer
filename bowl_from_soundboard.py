@@ -360,7 +360,7 @@ class FlatBackCurve(SideProfilePerControlTopCurve):
 # ---------------------------------------------------------------------
 # Ribs
 # ---------------------------------------------------------------------
-def build_ribs_above_soundboard(sections, n_ribs=12):
+def _build_ribs_above_soundboard(sections, n_ribs=12):
     """
     Build ribs along the edge-to-edge arc of each section circle,
     choosing the arc that passes through the apex (bowl side).
@@ -517,7 +517,7 @@ def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=Fal
     sections.append(   (X_fb, np.array([Y_fb, 0.0]), 0.0, np.array([Y_fb, 0.0])))
 
     # 4) Build ribs
-    ribs = build_ribs_above_soundboard(sections, n_ribs=n_ribs) if sections else []
+    ribs = _build_ribs_above_soundboard(sections, n_ribs=n_ribs) if sections else []
     if ribs:
         for rib in ribs:
             rib[0]  = np.array([X_ft, Y_ft, 0.0], dtype=float)

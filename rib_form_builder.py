@@ -39,7 +39,7 @@ def _intersect_line_plane_p1p2(p1, p2, p0, nrm):
     return _intersect_line_plane_pd(p1, p2 - p1, p0, nrm)
 
 
-def rib_surface_extended(outline1, outline2, plane_offset=10.0, allowance_left=0.0, allowance_right=0.0, end_extension=10.0):
+def _rib_surface_extended(outline1, outline2, plane_offset=10.0, allowance_left=0.0, allowance_right=0.0, end_extension=10.0):
     """
     Build rib surface extended to two parallel planes (left/right).
     Returns quads normalized into a local frame (X=along, Y=across, Z=normal),
@@ -126,10 +126,10 @@ def rib_surface_extended(outline1, outline2, plane_offset=10.0, allowance_left=0
     quads.append(np.array(strips[0]))
     quads.append(np.array(strips[-1]))
 
-    quads_norm = normalize_quads(rib1, rib2, quads)
+    quads_norm = _normalize_quads(rib1, rib2, quads)
     return quads_norm
 
-def normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.ndarray]):
+def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.ndarray]):
     """
     Normalize a rib surface given its outlines + quads:
       - Find widest connector → +Y
@@ -141,7 +141,7 @@ def normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.n
     outline1 = np.asarray(outline1, float)
     outline2 = np.asarray(outline2, float)
     if outline1.shape != outline2.shape or outline1.ndim != 2 or outline1.shape[1] != 3:
-        raise ValueError("normalize_quads expects two (N,3) outlines with same shape")
+        raise ValueError("_normalize_quads expects two (N,3) outlines with same shape")
 
     # widest connector
     connectors = outline2 - outline1
@@ -181,46 +181,40 @@ def normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.n
 
     return q_shifted
 
-
-def plot_extended_surface(ribs, title, plane_offset=10.0, allowance_left=0.0, allowance_right=0.0, end_extension=10.0, spacing=200.0):
+def _plot_ribs_extended(rib_quads, spacing=200.0, title="Extended Rib Surfaces"):
     """
-    Plot extended rib surfaces for all ribs.
-    Assumes rib_surface_extended already returns normalized quads.
+    Plot extended rib surfaces (normalized quads).
+    Applies Y-spacing between ribs.
+
+    Parameters
+    ----------
+    rib_quads : list of (idx, [quads])
+        Normalized quads per rib index.
+    spacing : float
+        Spacing applied along Y for each rib index.
+    title : str
+        Plot title.
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
     plotted_pts = []
-
-    for idx in range(len(ribs) - 1):
-        rib1, rib2 = ribs[idx], ribs[idx + 1]
-
-        # rib_surface_extended already normalizes
-        quads = rib_surface_extended(
-            rib1, rib2,
-            plane_offset=plane_offset,
-            allowance_left=allowance_left,
-            allowance_right=allowance_right,
-            end_extension=end_extension
-        )
-
-        # apply spacing only
+    for idx, quads in rib_quads:
         shift = np.array([0, idx * spacing, 0])
-        quads_shifted = [q + shift for q in quads]
-
-        for q in quads_shifted:
+        for q in quads:
+            q_shifted = q + shift
             ax.add_collection3d(
-                Poly3DCollection([q],
+                Poly3DCollection([q_shifted],
                                  alpha=0.6,
                                  facecolor="lightblue",
                                  edgecolor="k",
                                  linewidths=0.3)
             )
-        plotted_pts.extend(quads_shifted)
+            plotted_pts.append(q_shifted)
 
-    # equal aspect ratio
-    pts = np.vstack(plotted_pts)
-    set_axes_equal_3d(ax, pts[:, 0], pts[:, 1], pts[:, 2])
+    if plotted_pts:
+        pts = np.vstack(plotted_pts)
+        set_axes_equal_3d(ax, pts[:, 0], pts[:, 1], pts[:, 2])
 
     ax.set_title(title)
     ax.set_xlabel("X")
@@ -229,24 +223,57 @@ def plot_extended_surface(ribs, title, plane_offset=10.0, allowance_left=0.0, al
     plt.show()
     plt.close(fig)
 
+
+def plot_lute_ribs(
+    lute,
+    top_curve,
+    rib=1,
+    draw_all=False,
+    n_ribs=13,
+    n_sections=50,
+    plane_offset=10.0,
+    allowance_left=0.0,
+    allowance_right=0.0,
+    end_extension=10.0,
+    spacing=150.0,
+    title="Extended Rib Surfaces (normalized)"
+):
+    """
+    Build normalized rib surfaces for a lute and plot them.
+    """
+    # --- build bowl geometry
+    lute.draw_all()
+
+    _, rib_outlines = build_bowl_for_lute(
+        lute,
+        n_ribs=n_ribs,
+        n_sections=n_sections,
+        top_curve=top_curve,
+    )
+
+    if draw_all:
+        rib_indices = range(len(rib_outlines) - 1)
+    else:
+        rib_indices = [rib-1]
+
+    rib_quads = []
+    for idx in rib_indices:
+        if idx < 0 or idx >= len(rib_outlines):
+            raise ValueError("Rib index is outside range:", idx)
+        rib1, rib2 = rib_outlines[idx], rib_outlines[idx+1]
+        quads = _rib_surface_extended(
+            rib1, rib2,
+            plane_offset=plane_offset,
+            allowance_left=allowance_left,
+            allowance_right=allowance_right,
+            end_extension=end_extension,
+        )
+        rib_quads.append((idx, quads))
+
+    # delegate to the plotter
+    _plot_ribs_extended(rib_quads, spacing=spacing, title=title)
+
 if __name__ == "__main__":
     import lutes
 
-    lute = lutes.ManolLavta()
-    lute.draw_all()
-
-    _, ribs = build_bowl_for_lute(
-        lute,
-        n_ribs=13,
-        n_sections=30,
-        top_curve=MidCurve
-    )
-
-    plot_extended_surface(
-        ribs[1:4],
-        plane_offset=15.0,
-        allowance_left=50.0,
-        allowance_right=50.0,
-        end_extension=12.0,
-        title="Rib form surfaces"
-    )
+    plot_lute_ribs(lutes.ManolLavta(), top_curve=MidCurve, n_ribs=13, rib=7)
