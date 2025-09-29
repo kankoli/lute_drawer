@@ -40,7 +40,7 @@ def _intersect_line_plane_p1p2(p1, p2, p0, nrm):
 
 
 def rib_surface_extended(
-    rib1, rib2,
+    outline1, outline2,
     plane_offset=10.0,
     allowance_left=0.0,
     allowance_right=0.0,
@@ -51,9 +51,15 @@ def rib_surface_extended(
     Enhancements:
       - Ribbon continues as a ribbon past the tips (end_extension).
       - Independent left/right allowances.
-    Returns polygons for the extended surface, plus the plane definitions.
+    Returns polygons for the extended surface.
     """
-    rib1, rib2 = np.array(rib1, dtype=float), np.array(rib2, dtype=float)
+    # normalize first
+    outline1, outline2 = normalize_rib(outline1, outline2)
+
+    # now use ONLY these normalized outlines to build everything else
+    rib1 = np.array(outline1)
+    rib2 = np.array(outline2)
+
     n = min(len(rib1), len(rib2))
     rib1, rib2 = rib1[:n], rib2[:n]
 
@@ -71,7 +77,7 @@ def rib_surface_extended(
     # ---------- TOP END ----------
     tip_top = 0.5 * (rib1[0] + rib2[0])
     # nearest valid across (parallel to connector near the end)
-    across0 = (rib2[1] - rib1[1]) if n > 1 else np.array([1.0, 0.0, 0.0])
+    across0 = (rib2[1] - rib1[1]) if n > 1 else [1.0, 0.0, 0.0]
     across0 = _align_with_normal(_safe_unit(across0), nrm)
     # endpoint cap (true strip at the endpoint center)
     left_top_cap  = _intersect_line_plane_pd(tip_top, across0, p0_left,  nrm)
@@ -130,61 +136,142 @@ def rib_surface_extended(
             quads.append(np.array([p1, p2, q2, q1]))
 
     # Add caps (first and last strips)
-    quads.append(np.array([np.array(p) for p in strips[0]]))
-    quads.append(np.array([np.array(p) for p in strips[-1]]))
+    quads.append(np.array(strips[0]))
+    quads.append(np.array(strips[-1]))
 
-    return quads, (p0_left, p0_right, nrm)
+    return quads
 
+def normalize_rib(outline1: np.ndarray, outline2: np.ndarray):
+    """
+    Rotate/translate so the *widest connector* lies on the Y-axis (x=0, z=0):
+      - 'across' (rib2 - rib1 at widest) → +Y
+      - 'along'  (rib1 tangent there)    → +X
+      - 'normal'                         → +Z
+    Then translate so that connector's midpoint has x=0 and z=0.
+    """
+    outline1 = np.asarray(outline1, float)
+    outline2 = np.asarray(outline2, float)
+    if outline1.shape != outline2.shape or outline1.ndim != 2 or outline1.shape[1] != 3:
+        raise ValueError("normalize_rib expects two (N,3) arrays with the same shape")
+
+    # 1) widest connector (side-to-side, same index)
+    connectors = outline2 - outline1
+    if connectors.size == 0:
+        return outline1, outline2
+    idx = int(np.argmax(np.linalg.norm(connectors, axis=1)))
+    across = connectors[idx]
+    across /= (np.linalg.norm(across) + EPS)
+
+    # 2) along direction from rib1 tangent at the same index
+    if idx < len(outline1) - 1:
+        along = outline1[idx + 1] - outline1[idx]
+    else:
+        along = outline1[idx] - outline1[idx - 1]
+    along /= (np.linalg.norm(along) + EPS)
+
+    # 3) local orthonormal basis (X'=along, Y'=across, Z'=normal)
+    z_local = np.cross(along, across)
+    nz = np.linalg.norm(z_local)
+    if nz < EPS:
+        # extremely degenerate; just return as-is
+        return outline1, outline2
+    z_local /= nz
+    y_local = across
+    x_local = np.cross(y_local, z_local)
+    x_local /= (np.linalg.norm(x_local) + EPS)
+
+    # Rotation: local→global = [x y z]; we want global→local, so transpose
+    R = np.vstack([x_local, y_local, z_local]).T
+    R_inv = R.T
+
+    def to_local(A: np.ndarray) -> np.ndarray:
+        return (R_inv @ A.T).T
+
+    o1 = to_local(outline1)
+    o2 = to_local(outline2)
+
+    # Ensure across points from rib1→rib2 is +Y in local frame (optional)
+    if o2[idx, 1] < o1[idx, 1]:
+        # flip X and Y to maintain right-handedness while making across point +Y
+        o1[:, :2] *= -1.0
+        o2[:, :2] *= -1.0
+
+    # 4) translate so the *widest connector* lies on Y-axis: x=0, z=0
+    mid_x = 0.5 * (o1[idx, 0] + o2[idx, 0])
+    mid_z = 0.5 * (o1[idx, 2] + o2[idx, 2])
+    o1[:, 0] -= mid_x
+    o2[:, 0] -= mid_x
+    o1[:, 2] -= mid_z
+    o2[:, 2] -= mid_z
+
+    return o1, o2
 
 def plot_extended_surface(
-    rib1, rib2,
+    ribs,
     plane_offset=10.0,
     allowance_left=0.0,
     allowance_right=0.0,
     end_extension=10.0,
-    title="Extended Rib Surface"
+    spacing=150.0,
+    title="All Extended Rib Surfaces (Normalized Surfaces Only)"
 ):
-    """Plot extended rib surface + original outlines + cutting planes."""
-    quads, (p0_left, p0_right, nrm) = rib_surface_extended(
-        rib1, rib2,
-        plane_offset=plane_offset,
-        allowance_left=allowance_left,
-        allowance_right=allowance_right,
-        end_extension=end_extension
-    )
-
+    """
+    Plot extended rib surfaces for all ribs, normalized and arranged side by side.
+    Only the rib surfaces and outlines are drawn (no block underneath).
+    """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
-    poly = Poly3DCollection(quads, alpha=0.6,
-                            facecolor="lightblue", edgecolor="k", linewidths=0.3)
-    ax.add_collection3d(poly)
+    all_quads = []
 
-    rib1 = np.asarray(rib1)
-    rib2 = np.asarray(rib2)
-    ax.plot(rib1[:, 0], rib1[:, 1], rib1[:, 2], color="red", lw=2, label="rib1")
-    ax.plot(rib2[:, 0], rib2[:, 1], rib2[:, 2], color="green", lw=2, label="rib2")
+    # --- build all ribs first ---
+    for idx in range(len(ribs) - 1):
+        rib1, rib2 = ribs[idx], ribs[idx + 1]
 
-    def plane_patch(p0, nrm, size=50):
-        v = np.array([1.0, 0.0, 0.0])
-        if abs(np.dot(v, nrm)) > 0.9:
-            v = np.array([0.0, 1.0, 0.0])
-        u = np.cross(nrm, v); u /= np.linalg.norm(u) + EPS
-        v = np.cross(nrm, u); v /= np.linalg.norm(v) + EPS
-        corners = [p0 + sx*u*size + sy*v*size
-                   for sx, sy in [(-1,-1),(1,-1),(1,1),(-1,1)]]
-        return np.array(corners)
+        quads = rib_surface_extended(
+            rib1, rib2,
+            plane_offset=plane_offset,
+            allowance_left=allowance_left,
+            allowance_right=allowance_right,
+            end_extension=end_extension
+        )
 
-    ax.add_collection3d(Poly3DCollection([plane_patch(p0_left, nrm)],
-                                         alpha=0.2, facecolor="red"))
-    ax.add_collection3d(Poly3DCollection([plane_patch(p0_right, nrm)],
-                                         alpha=0.2, facecolor="green"))
+        all_quads.append((idx, quads))
 
-    pts = np.vstack(quads + [rib1, rib2])
+    # --- global Z and X alignment ---
+    all_pts = np.vstack([q for _, quads in all_quads for q in quads])
+    global_zmin = np.min(all_pts[:, 2])
+    global_xmin = np.min(all_pts[:, 0])
+
+    # --- normalize ribs individually in Y ---
+    normalized_ribs = []
+    for idx, quads in all_quads:
+        rib_ymin = np.min(np.vstack(quads)[:, 1])
+        quads_norm = [q - np.array([global_xmin, rib_ymin, 0]) for q in quads]
+        normalized_ribs.append((idx, quads_norm))
+
+    # --- plot ribs ---
+    plotted_pts = []
+    for idx, quads in normalized_ribs:
+        shift = np.array([0, idx * spacing, -global_zmin])
+        quads_shifted = [q + shift for q in quads]
+
+        # surfaces
+        for q in quads_shifted:
+            ax.add_collection3d(
+                Poly3DCollection([q], alpha=0.6,
+                                 facecolor="lightblue", edgecolor="k", linewidths=0.3)
+            )
+        plotted_pts.extend(quads_shifted)
+
+    # --- equal aspect ---
+    pts = np.vstack(plotted_pts)
     set_axes_equal_3d(ax, pts[:, 0], pts[:, 1], pts[:, 2])
 
     ax.set_title(title)
-    ax.legend()
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
     plt.show()
     plt.close(fig)
 
@@ -198,12 +285,12 @@ if __name__ == "__main__":
     sections, ribs = build_bowl_for_lute(
         lute,
         n_ribs=13,
-        n_sections=300,
+        n_sections=30,
         top_curve=LuteCurve
     )
 
     plot_extended_surface(
-        ribs[12], ribs[13],
+        ribs,
         plane_offset=15.0,
         allowance_left=2.0,
         allowance_right=4.0,
