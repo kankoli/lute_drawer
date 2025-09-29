@@ -3,7 +3,7 @@
 # top curve with per-control shaping (single strategy, no control-depth constraints).
 #
 # Usage:
-#   lute = ManolLavta(); lute.draw()
+#   lute = ManolLavta();
 #   class MyCurve(SideProfilePerControlTopCurve):
 #       SHAPE_GAMMAS = {"neck_joint":1.10,"soundhole_center":1.25,"form_center":0.85,"bridge":1.05}
 #       SHAPE_WIDTHS = {
@@ -91,7 +91,7 @@ def _intersections_with_vertical(outline_xy, x_const, tol=1e-9):
             dedup.append(y)
     return dedup
 
-def extract_side_points_at_X(lute, X, debug=False, min_width=1e-3, samples_per_arc=500):
+def _extract_side_points_at_X(lute, X, debug=False, min_width=1e-3, samples_per_arc=500):
     """Slice the soundboard at numeric X and return (P_left_xy, P_right_xy, X)."""
     if abs(float(X)-float(lute.form_top.x)) < 1e-12 or \
        abs(float(X)-float(lute.form_bottom.x)) < 1e-12:
@@ -112,7 +112,7 @@ def extract_side_points_at_X(lute, X, debug=False, min_width=1e-3, samples_per_a
         ax.set_aspect('equal', adjustable='box'); plt.show()
     raise RuntimeError(f"Could not find two side intersections at X={float(X):.4f}")
 
-def spine_point_at_X(lute, X: float):
+def _spine_point_at_X(lute, X: float):
     x0, y0 = float(lute.form_top.x), float(lute.form_top.y)
     x1, y1 = float(lute.form_bottom.x), float(lute.form_bottom.y)
     if abs(x1-x0) < 1e-12: return y0
@@ -207,11 +207,11 @@ class SideProfilePerControlTopCurve(TopCurve):
 
         W = []
         for X in xs:
-            hit = extract_side_points_at_X(lute, X)
+            hit = _extract_side_points_at_X(lute, X)
             if hit is None:
                 W.append(0.0); continue
             L, R, _ = hit
-            y_spine = spine_point_at_X(lute, X)
+            y_spine = _spine_point_at_X(lute, X)
             W.append(max(abs(float(L[1])-y_spine), abs(float(R[1])-y_spine)))
         W = np.asarray(W, float)
         if W.size == 0 or float(W.max()) < 1e-12:
@@ -467,6 +467,7 @@ def _resolve_top_curve(lute, top_curve):
 
 def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=False, top_curve=None):
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
+    lute.draw_all()
     z_top = _resolve_top_curve(lute, top_curve)
 
     # 1) Choose section X positions
@@ -492,10 +493,10 @@ def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=Fal
     sections: List[Tuple[float, np.ndarray, float, np.ndarray]] = []
     for X in xs:
         try:
-            hit = extract_side_points_at_X(lute, X, debug=debug)
+            hit = _extract_side_points_at_X(lute, X, debug=debug)
             if hit is None: continue
             L, R, Xs = hit
-            Y_apex = spine_point_at_X(lute, Xs)
+            Y_apex = _spine_point_at_X(lute, Xs)
             Z_apex = float(z_top(Xs))
             # Skip sections with effectively flat apex; end-caps are added anyway.
             if abs(Z_apex) < 1e-6:
@@ -666,7 +667,7 @@ def main():
     except Exception:
         print("Demo skipped: TurkishOudComplexLowerBout not available."); return
 
-    lute = lutes.ManolLavta(); lute.draw_all()
+    lute = lutes.ManolLavta()
 
     sections, ribs = build_bowl_for_lute(
         lute,

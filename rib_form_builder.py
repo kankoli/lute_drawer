@@ -242,8 +242,6 @@ def plot_lute_ribs(
     Build normalized rib surfaces for a lute and plot them.
     """
     # --- build bowl geometry
-    lute.draw_all()
-
     _, rib_outlines = build_bowl_for_lute(
         lute,
         n_ribs=n_ribs,
