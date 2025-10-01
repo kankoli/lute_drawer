@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from bowl_from_soundboard import Section, build_bowl_for_lute, set_axes_equal_3d, MidCurve
+from bowl_from_soundboard import Section, build_bowl_for_lute
+from bowl_plotting import set_axes_equal_3d
+from bowl_top_curves import MidCurve
 
 EPS = 1e-9
 

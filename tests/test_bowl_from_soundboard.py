@@ -18,7 +18,8 @@ sys.modules.setdefault("matplotlib", matplotlib_stub)
 sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lutes
-from bowl_from_soundboard import SimpleAmplitudeCurve, _resolve_top_curve, build_bowl_for_lute
+from bowl_from_soundboard import _resolve_top_curve, build_bowl_for_lute
+from bowl_top_curves import SimpleAmplitudeCurve
 
 
 class BuildBowlForLuteTests(unittest.TestCase):

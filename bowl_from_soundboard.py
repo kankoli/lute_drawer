@@ -5,16 +5,25 @@
 # Usage:
 #   lute = ManolLavta()
 #   sections, ribs = build_bowl_for_lute(lute, n_ribs=13, n_sections=100)
+#   from bowl_plotting import plot_bowl
 #   plot_bowl(lute, sections, ribs)
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Callable, Iterable, List, NamedTuple, Sequence
 
-import matplotlib.pyplot as plt
 import numpy as np
 import warnings
+
+from bowl_top_curves import (
+    DeepBackCurve,
+    FlatBackCurve,
+    MidCurve,
+    SideProfileParameters,
+    SideProfilePerControlTopCurve,
+    SimpleAmplitudeCurve,
+    resolve_top_curve,
+)
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -27,56 +36,6 @@ class Section(NamedTuple):
     center: np.ndarray
     radius: float
     apex: np.ndarray
-
-
-@dataclass(frozen=True)
-class SideProfileParameters:
-    """Parameters that describe a side-profile-driven top curve."""
-
-    gammas: dict[str, float]
-    widths: dict[str, float | tuple]
-    amplitude_mode: str = "max_depth"  # "max_depth" | "units"
-    amplitude_units: float | None = None
-    width_factor: float = 0.9
-    samples: int = 400
-    margin: float = 1e-3
-    gate_start: float = 0.0
-    gate_full: float = 0.0
-    max_exponent_delta: float = 0.8
-    kernel: str = "cauchy"  # "cauchy" | "gauss"
-
-
-# ---------------------------------------------------------------------------
-# Utility helpers
-# ---------------------------------------------------------------------------
-
-def set_axes_equal_3d(ax, xs=None, ys=None, zs=None, use_ortho=True):
-    """Force equal data scale on a 3D axes so circles look circular."""
-    if xs is None or ys is None or zs is None:
-        xmin, xmax = ax.get_xlim3d()
-        ymin, ymax = ax.get_ylim3d()
-        zmin, zmax = ax.get_zlim3d()
-    else:
-        xs = np.asarray(xs)
-        ys = np.asarray(ys)
-        zs = np.asarray(zs)
-        xmin, xmax = float(xs.min()), float(xs.max())
-        ymin, ymax = float(ys.min()), float(ys.max())
-        zmin, zmax = float(zs.min()), float(zs.max())
-    xmid, ymid, zmid = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0, (zmin + zmax) / 2.0
-    r = max(xmax - xmin, ymax - ymin, zmax - zmin, 1e-12) / 2.0
-    ax.set_xlim3d([xmid - r, xmid + r])
-    ax.set_ylim3d([ymid - r, ymid + r])
-    ax.set_zlim3d([zmid - r, zmid + r])
-    try:
-        ax.set_box_aspect((1, 1, 1))
-    except Exception:  # pragma: no cover
-        pass
-    if use_ortho:
-        try:
-            ax.set_proj_type("ortho")
-        except Exception:  # pragma: no cover
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -309,117 +268,6 @@ def _build_ribs(sections: Sequence[Section], n_ribs: int) -> List[np.ndarray]:
     return [np.asarray(rib, dtype=float) for rib in ribs]
 
 
-# ---------------------------------------------------------------------------
-# Top curve construction
-# ---------------------------------------------------------------------------
-
-class TopCurve:
-    name = "base"
-
-    @classmethod
-    def build(cls, lute):
-        raise NotImplementedError
-
-
-class SideProfilePerControlTopCurve(TopCurve):
-    PARAMETERS = SideProfileParameters(gammas={}, widths={})
-
-    @classmethod
-    def _parameters(cls) -> SideProfileParameters:
-        return cls.PARAMETERS
-
-    @classmethod
-    def build(cls, lute):
-        params = cls._parameters()
-        if not params.gammas:
-            raise RuntimeError("SideProfilePerControlTopCurve requires non-empty SHAPE_GAMMAS")
-        return _build_side_profile_top_curve(lute, params)
-
-
-class SimpleAmplitudeCurve(SideProfilePerControlTopCurve):
-    PARAMETERS = SideProfileParameters(
-        gammas={
-            "neck_joint": 1.00,
-            "soundhole_center": 1.00,
-            "form_center": 1.00,
-            "bridge": 1.00,
-        },
-        widths={},
-        amplitude_mode="units",
-        amplitude_units=1.75,
-    )
-
-
-class DeepBackCurve(SideProfilePerControlTopCurve):
-    PARAMETERS = SideProfileParameters(
-        gammas={
-            "neck_joint": 1.35,
-            "soundhole_center": 1.20,
-            "form_center": 0.85,
-            "bridge": 0.85,
-        },
-        widths={
-            "form_center": ("span_frac", 0.45),
-            "soundhole_center": ("span_frac", 0.35),
-            "bridge": ("span_frac", 0.30),
-            "neck_joint": ("span_frac", 0.25),
-        },
-        amplitude_mode="units",
-        amplitude_units=1.8,
-    )
-
-
-class MidCurve(SideProfilePerControlTopCurve):
-    PARAMETERS = SideProfileParameters(
-        gammas={
-            "neck_joint": 1.20,
-            "soundhole_center": 1.10,
-            "form_center": 0.95,
-            "bridge": 0.95,
-        },
-        widths={
-            "form_center": ("span_frac", 0.45),
-            "soundhole_center": ("span_frac", 0.35),
-            "bridge": ("span_frac", 0.30),
-            "neck_joint": ("span_frac", 0.25),
-        },
-        amplitude_mode="units",
-        amplitude_units=1.75,
-    )
-
-
-class FlatBackCurve(SideProfilePerControlTopCurve):
-    PARAMETERS = SideProfileParameters(
-        gammas={
-            "neck_joint": 1.35,
-            "soundhole_center": 1.20,
-            "form_center": 1.05,
-            "bridge": 1.05,
-        },
-        widths={
-            "form_center": ("span_frac", 0.45),
-            "soundhole_center": ("span_frac", 0.35),
-            "bridge": ("span_frac", 0.30),
-            "neck_joint": ("span_frac", 0.25),
-        },
-        amplitude_mode="units",
-        amplitude_units=1.45,
-    )
-
-
-def _resolve_top_curve(lute, top_curve):
-    if callable(top_curve) and not isinstance(top_curve, type):
-        return top_curve
-    try:
-        if isinstance(top_curve, type) and issubclass(top_curve, TopCurve):
-            return top_curve.build(lute)
-        if isinstance(top_curve, TopCurve):
-            return top_curve.build(lute)
-    except Exception:
-        pass
-    return SideProfilePerControlTopCurve.build(lute)
-
-
 def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callable[[float], float]:
     margin = params.margin
     n_samples = params.samples
@@ -536,6 +384,10 @@ def _resolve_amplitude(lute, params: SideProfileParameters) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_top_curve(lute, top_curve):
+    return resolve_top_curve(lute, top_curve, _build_side_profile_top_curve)
+
+
 def build_bowl_for_lute(
     lute,
     n_ribs: int = 13,
@@ -565,61 +417,6 @@ def build_bowl_for_lute(
     return sections, ribs
 
 
-def plot_bowl(lute, sections, ribs, show_apexes=False, highlight_neck_joint=True):
-    import numpy as np
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection="3d")
-
-    for rib in ribs:
-        ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], "b-", lw=1)
-
-    if len(sections) <= 80:
-        fb_x = float(lute.form_bottom.x)
-        for section in sections:
-            x, center, r, _ = section
-            if r <= 0 or abs(x - fb_x) < 1e-9:
-                continue
-            C_Y, C_Z = float(center[0]), float(center[1])
-            phi = np.linspace(0, 2 * np.pi, 200)
-            Y = C_Y + r * np.cos(phi)
-            Z = C_Z + r * np.sin(phi)
-            X = np.full_like(Y, float(x))
-            ax.plot(X, Y, Z, color="0.3", alpha=0.25)
-
-    if show_apexes and sections:
-        apex_Xs, apex_Ys, apex_Zs = [], [], []
-        for section in sections:
-            apex_Xs.append(float(section.x))
-            apex_Ys.append(float(section.apex[0]))
-            apex_Zs.append(float(section.apex[1]))
-        ax.scatter(apex_Xs, apex_Ys, apex_Zs, color="red", s=50, label="apex (top curve)")
-        ax.plot(apex_Xs, apex_Ys, apex_Zs, color="red", lw=2, alpha=0.7, label="top curve")
-
-    ax.scatter([float(lute.form_top.x)], [float(lute.form_top.y)], [0.0], color="orange", s=60, label="form_top")
-    ax.scatter([float(lute.form_bottom.x)], [float(lute.form_bottom.y)], [0.0], color="green", s=60, label="form_bottom")
-
-    xs = [float(lute.form_top.x), float(lute.form_bottom.x)]
-    ys = [float(lute.form_top.y), float(lute.form_bottom.y)]
-    ax.plot(xs, ys, [0.0, 0.0], "k--", alpha=0.6, label="spine")
-
-    if highlight_neck_joint and sections:
-        x_nj = float(lute.point_neck_joint.x)
-        y_nj = float(lute.point_neck_joint.y)
-        ax.scatter([x_nj], [y_nj], [0.0], color="purple", s=60, label="neck joint")
-
-    set_axes_equal_3d(
-        ax,
-        xs=[rib[:, 0] for rib in ribs] if ribs else None,
-        ys=[rib[:, 1] for rib in ribs] if ribs else None,
-        zs=[rib[:, 2] for rib in ribs] if ribs else None,
-    )
-
-    ax.legend(loc="best")
-    plt.tight_layout()
-    plt.show()
-
-
 # ---------------------------------------------------------------------------
 # Execution helper
 # ---------------------------------------------------------------------------
@@ -631,6 +428,8 @@ def main():
     except Exception:
         print("Demo skipped: lute definitions not available.")
         return
+
+    from bowl_plotting import plot_bowl
 
     lute = lutes.ManolLavta()
     sections, ribs = build_bowl_for_lute(
