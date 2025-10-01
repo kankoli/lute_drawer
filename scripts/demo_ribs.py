@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Quick demo for generating extended rib surfaces."""
+from __future__ import annotations
+
+import argparse
+import importlib
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces, plot_rib_surfaces
+
+
+def _resolve_class(path: str):
+    module_name, _, attr = path.rpartition(".")
+    if not module_name:
+        raise ValueError(f"Class name must include module path: {path}")
+    module = importlib.import_module(module_name)
+    try:
+        return getattr(module, attr)
+    except AttributeError as exc:
+        raise ValueError(f"Module '{module_name}' has no attribute '{attr}'") from exc
+
+
+
+DEFAULT_LUTE = "lutes.ManolLavta"
+DEFAULT_CURVE = "bowl_top_curves.MidCurve"
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "lute",
+        nargs="?",
+        default=DEFAULT_LUTE,
+        help=f"Fully qualified lute class (default: {DEFAULT_LUTE})",
+    )
+    parser.add_argument(
+        "curve",
+        nargs="?",
+        default=DEFAULT_CURVE,
+        help=f"Fully qualified top-curve class (default: {DEFAULT_CURVE})",
+    )
+    parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals")
+    parser.add_argument("--sections", type=int, default=40, help="Number of sections to sample")
+    parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based)")
+    parser.add_argument("--all", action="store_true", help="Plot all ribs instead of a single one")
+    parser.add_argument("--plane-offset", type=float, default=10.0)
+    parser.add_argument("--allowance-left", type=float, default=0.0)
+    parser.add_argument("--allowance-right", type=float, default=0.0)
+    parser.add_argument("--end-extension", type=float, default=10.0)
+    parser.add_argument("--spacing", type=float, default=200.0)
+    parser.add_argument("--title", default="Extended Rib Surfaces")
+    return parser.parse_args(argv)
+
+
+def main() -> int:
+    args = parse_args()
+    lute_cls = _resolve_class(args.lute)
+    curve_cls = _resolve_class(args.curve)
+    lute = lute_cls()
+
+    options = RibSurfaceOptions(
+        plane_offset=args.plane_offset,
+        allowance_left=args.allowance_left,
+        allowance_right=args.allowance_right,
+        end_extension=args.end_extension,
+        spacing=args.spacing,
+    )
+
+    _, surfaces, opts = build_extended_rib_surfaces(
+        lute,
+        top_curve=curve_cls,
+        n_ribs=args.ribs,
+        n_sections=args.sections,
+        options=options,
+        rib_index=args.rib_index,
+        draw_all=args.all,
+    )
+    plot_rib_surfaces(surfaces, spacing=opts.spacing, title=args.title)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

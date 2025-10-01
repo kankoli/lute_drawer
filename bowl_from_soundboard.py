@@ -422,24 +422,3 @@ def build_bowl_for_lute(
 # ---------------------------------------------------------------------------
 
 
-def main():
-    try:
-        import lutes
-    except Exception:
-        print("Demo skipped: lute definitions not available.")
-        return
-
-    from bowl_plotting import plot_bowl
-
-    lute = lutes.ManolLavta()
-    sections, ribs = build_bowl_for_lute(
-        lute,
-        n_ribs=13,
-        n_sections=500,
-        top_curve=MidCurve,
-    )
-    plot_bowl(lute, sections, ribs)
-
-
-if __name__ == "__main__":
-    main()
