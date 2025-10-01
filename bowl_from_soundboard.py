@@ -21,6 +21,7 @@
 from typing import List, Tuple, Any
 import numpy as np
 import matplotlib.pyplot as plt
+import warnings
 
 # ---------------------------------------------------------------------
 # Utils
@@ -177,9 +178,9 @@ class SideProfilePerControlTopCurve(TopCurve):
             span = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
             widths = {}
             for key, val in cls.SHAPE_WIDTHS.items():
-                if isinstance(val,(int,float)):
+                if isinstance(val, (int, float)):
                     widths[key] = float(val)
-                elif isinstance(val,(tuple,list)) and len(val)==2 and val[0]=="span_frac":
+                elif isinstance(val, (tuple, list)) and len(val) == 2 and val[0] == "span_frac":
                     widths[key] = float(val[1]) * span
 
         # --- Resolve amplitude ---
@@ -191,7 +192,7 @@ class SideProfilePerControlTopCurve(TopCurve):
             amplitude = float(mx) * u
 
         # === Begin inlined _make_top_curve_from_side_percontrol ===
-        gammas      = cls.SHAPE_GAMMAS
+        gammas      = dict(cls.SHAPE_GAMMAS)
         width_factor= cls.WIDTH_FACTOR
         n_samples   = cls.SAMPLES
         margin      = 1e-3
@@ -221,16 +222,28 @@ class SideProfilePerControlTopCurve(TopCurve):
 
         # 2) Controls
         ctrl_x_all = {
-            "neck_joint":       float(lute.point_neck_joint.x),
-            "soundhole_center": float(lute._get_soundhole_center().x),
-            "form_center":      float(lute.form_center.x),
-            "bridge":           float(lute.bridge.x),
+            "neck_joint":  float(lute.point_neck_joint.x),
+            "form_center": float(lute.form_center.x),
+            "bridge":      float(lute.bridge.x),
         }
-        unknown = [k for k in gammas.keys() if k not in ctrl_x_all]
-        if unknown:
-            raise KeyError(f"Unknown SHAPE_GAMMAS keys: {unknown}. "
-                           f"Use only {list(ctrl_x_all.keys())}.")
-        keys = [k for k in ("neck_joint","soundhole_center","form_center","bridge") if k in gammas]
+
+        soundhole_center = None
+        getter = getattr(lute, "_get_soundhole_center", None)
+        if callable(getter):
+            try:
+                soundhole_center = getter()
+            except Exception:
+                soundhole_center = None
+        if soundhole_center is not None:
+            try:
+                ctrl_x_all["soundhole_center"] = float(soundhole_center.x)
+            except AttributeError:
+                pass
+
+        available = set(ctrl_x_all.keys())
+        gammas = {k: gammas[k] for k in gammas.keys() if k in available}
+
+        keys = [k for k in ("neck_joint", "soundhole_center", "form_center", "bridge") if k in gammas]
         if not keys:
             def z_top_lin(x): 
                 return float(amplitude * np.interp(float(x), xs, N, left=0.0, right=0.0))
@@ -296,14 +309,14 @@ class SimpleAmplitudeCurve(SideProfilePerControlTopCurve):
 class DeepBackCurve(SideProfilePerControlTopCurve):
     # 1) Global depth
     AMPLITUDE_MODE  = "units"
-    AMPLITUDE_UNITS = 2
+    AMPLITUDE_UNITS = 1.8
 
     # 2) Local shaping (start subtle!)
     SHAPE_GAMMAS = {
-        "neck_joint":       1.00,
-        "soundhole_center": 1.00,
-        "form_center":      0.80,
-        "bridge":           0.80,
+        "neck_joint":       1.35,
+        "soundhole_center": 1.20,
+        "form_center":      0.85,
+        "bridge":           0.85,
     }
 
     # 3) Influence widths (broad, smooth)
@@ -322,10 +335,10 @@ class MidCurve(SideProfilePerControlTopCurve):
 
     # 2) Local shaping (start subtle!)
     SHAPE_GAMMAS = {
-        "neck_joint":       0.85, # fuller
-        "soundhole_center": 0.80,
-        "form_center":      1.00,
-        "bridge":           1.00,
+        "neck_joint":       1.20,
+        "soundhole_center": 1.10,
+        "form_center":      0.95,
+        "bridge":           0.95,
     }
 
     # 3) Influence widths (broad, smooth)
@@ -507,6 +520,14 @@ def build_bowl_for_lute(lute, n_ribs=13, n_sections=None, margin=1e-3, debug=Fal
                 np.array([float(R[1]), 0.0]),
                 apex
             )
+            if float(C_YZ[1]) >= 0.0:
+                warnings.warn(
+                    (
+                        "Section circle center lies on or above the soundboard plane "
+                        f"(X={Xs:.4f}); resulting mold may trap the bowl."
+                    ),
+                    RuntimeWarning,
+                )
             sections.append((Xs, C_YZ, float(r), apex))
         except Exception as e:
             if debug: print(f"Section FAILED at X={X:.4f}: {e}")
