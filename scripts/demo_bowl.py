@@ -27,7 +27,7 @@ def _resolve_class(path: str):
         raise ValueError(f"Module '{module_name}' has no attribute '{attr}'") from exc
 
 
-DEFAULT_LUTE = "lutes.ManolLavta"
+DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "bowl_top_curves.MidCurve"
 
 

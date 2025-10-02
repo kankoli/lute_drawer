@@ -304,6 +304,12 @@ def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callab
         except Exception:
             pass
 
+    if "soundhole_center" not in ctrl_x_all and getattr(lute, "soundhole_center", None) is not None:
+        try:
+            ctrl_x_all["soundhole_center"] = float(lute.soundhole_center.x)
+        except Exception:
+            pass
+
     gammas = {k: params.gammas[k] for k in params.gammas if k in ctrl_x_all}
     if not gammas:
         def z_top_lin(x):
@@ -395,9 +401,11 @@ def build_bowl_for_lute(
     margin: float = 1e-3,
     debug: bool = False,
     top_curve=None,
-):
+):  
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
-    lute.draw_all()
+    draw = getattr(lute, "draw_all", None)
+    if callable(draw):
+        draw()
     z_top = _resolve_top_curve(lute, top_curve)
 
     xs = _select_section_positions(lute, n_sections, margin, debug)
@@ -420,5 +428,3 @@ def build_bowl_for_lute(
 # ---------------------------------------------------------------------------
 # Execution helper
 # ---------------------------------------------------------------------------
-
-

@@ -27,7 +27,7 @@ def _resolve_class(path: str):
 
 
 
-DEFAULT_LUTE = "lutes.ManolLavta"
+DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "bowl_top_curves.MidCurve"
 
 

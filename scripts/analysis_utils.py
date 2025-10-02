@@ -12,7 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import lutes
+import lute_soundboard as lute_defs
+from lute_soundboard import LuteSoundboard
 from bowl_from_soundboard import SideProfilePerControlTopCurve
 from lute_renderers import SvgRenderer
 
@@ -48,15 +49,15 @@ def sandboxed_renderer() -> Iterator[None]:
         SvgRenderer.draw = original_draw
 
 
-def iter_concrete_lute_classes(names: Iterable[str] | None = None) -> List[Tuple[str, Type[lutes.Lute]]]:
+def iter_concrete_lute_classes(names: Iterable[str] | None = None) -> List[Tuple[str, Type[LuteSoundboard]]]:
     """Return (name, class) pairs for concrete lute subclasses."""
-    lute_classes: List[Tuple[str, Type[lutes.Lute]]] = []
-    for name, cls in inspect.getmembers(lutes, inspect.isclass):
-        if not issubclass(cls, lutes.Lute):
+    lute_classes: List[Tuple[str, Type[LuteSoundboard]]] = []
+    for name, cls in inspect.getmembers(lute_defs, inspect.isclass):
+        if not issubclass(cls, LuteSoundboard):
             continue
-        if cls is lutes.Lute:
+        if cls is LuteSoundboard:
             continue
-        if not getattr(cls, "__module__", "").startswith("lutes"):
+        if not getattr(cls, "__module__", "").startswith("lute_soundboard"):
             continue
         if getattr(cls, "__abstractmethods__", None):
             continue

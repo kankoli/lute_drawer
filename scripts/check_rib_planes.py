@@ -18,7 +18,7 @@ import numpy as np
 from analysis_utils import ensure_matplotlib_stub, sandboxed_renderer
 from bowl_from_soundboard import build_bowl_for_lute
 
-DEFAULT_LUTE = "lutes.ManolLavta"
+DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "bowl_top_curves.MidCurve"
 CONCAVITY_TOL = 0.05
 

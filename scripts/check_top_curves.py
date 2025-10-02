@@ -89,7 +89,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument(
         "--lute",
         action="append",
-        help="Name of a lute class in lutes.py to analyse (default: all concrete lutes)",
+        help="Name of a lute class in lute_soundboard to analyse (default: all concrete lutes)",
     )
     parser.add_argument("--sections", type=int, default=120, help="Number of sections to sample")
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals")
