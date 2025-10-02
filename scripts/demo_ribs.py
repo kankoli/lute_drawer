@@ -11,7 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces, plot_rib_surfaces
+from rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces
+from bowl_plotting import plot_rib_surfaces
 
 
 def _resolve_class(path: str):

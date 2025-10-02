@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
-import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from bowl_from_soundboard import Section, build_bowl_for_lute
-from bowl_plotting import set_axes_equal_3d
+from bowl_plotting import plot_rib_surfaces
 from bowl_top_curves import MidCurve
 
 EPS = 1e-9
@@ -69,28 +67,6 @@ def build_extended_rib_surfaces(
         )
         surfaces.append((idx + 1, quads))
     return sections, surfaces, opts
-
-
-def plot_rib_surfaces(surfaces: Sequence[tuple[int, List[np.ndarray]]], *, spacing: float, title: str):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-
-    for rib_idx, quads in surfaces:
-        offset = (rib_idx - 1) * spacing
-        for quad in quads:
-            quad = np.asarray(quad) + np.array([0.0, offset, 0.0])
-            poly = Poly3DCollection([quad], alpha=0.6)
-            poly.set_facecolor((0.3, 0.6, 0.8, 0.4))
-            poly.set_edgecolor("#204060")
-            ax.add_collection3d(poly)
-
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_title(title)
-    set_axes_equal_3d(ax)
-    plt.tight_layout()
-    plt.show()
 
 
 def plot_lute_ribs(
