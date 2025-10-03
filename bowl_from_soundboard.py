@@ -129,21 +129,7 @@ def _spine_point_at_X(lute, X: float):
     return y0 + t * (y1 - y0)
 
 
-def _select_section_positions(lute, n_sections: int | None, margin: float, debug: bool) -> np.ndarray:
-    if n_sections is None:
-        xs: List[float] = [float(lute.point_neck_joint.x)]
-        getter = getattr(lute, "_get_soundhole_center", None)
-        if callable(getter):
-            try:
-                center = getter()
-                if center is not None:
-                    xs.append(float(center.x))
-            except Exception:
-                pass
-        xs.append(float(lute.form_center.x))
-        xs.append(float(lute.bridge.x))
-        return np.array(xs, dtype=float)
-
+def _select_section_positions(lute, n_sections: int , margin: float, debug: bool) -> np.ndarray:
     span = float(lute.form_bottom.x - lute.form_top.x)
     eps = margin * abs(span)
     x0 = float(lute.form_top.x) + eps
@@ -397,11 +383,11 @@ def _resolve_top_curve(lute, top_curve):
 def build_bowl_for_lute(
     lute,
     n_ribs: int = 13,
-    n_sections: int | None = None,
+    n_sections: int = 10,
     margin: float = 1e-3,
     debug: bool = False,
     top_curve=None,
-):  
+):
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
     draw = getattr(lute, "draw_all", None)
     if callable(draw):
@@ -423,8 +409,3 @@ def build_bowl_for_lute(
             rib[-1] = np.array([X_fb, Y_fb, 0.0], dtype=float)
 
     return sections, ribs
-
-
-# ---------------------------------------------------------------------------
-# Execution helper
-# ---------------------------------------------------------------------------
