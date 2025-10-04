@@ -17,6 +17,8 @@ def plot_mold_sections_2d(
     ax=None,
     show_rib_points: bool = True,
     invert_z: bool = True,
+    form_top=None,
+    form_bottom=None,
 ):
     """2D visualisation for mold section faces."""
 
@@ -35,6 +37,11 @@ def plot_mold_sections_2d(
             if show_rib_points:
                 ax.scatter(face.y, face.z, s=12, zorder=3, color=color)
 
+    if form_top is not None:
+        ax.scatter([float(form_top.y)], [0.0], color="orange", s=40, label="form_top")
+    if form_bottom is not None:
+        ax.scatter([float(form_bottom.y)], [0.0], color="green", s=40, label="form_bottom")
+
     ax.set_xlabel("Y (soundboard across)")
     ax.set_ylabel("Z (depth)")
     if invert_z:
@@ -50,6 +57,8 @@ def plot_mold_sections_3d(
     *,
     ax=None,
     show_rib_points: bool = True,
+    form_top=None,
+    form_bottom=None,
 ):
     """Render mold sections in 3D for debugging."""
 
@@ -78,6 +87,25 @@ def plot_mold_sections_3d(
             xs_all.append(x)
             ys_all.append(y)
             zs_all.append(z)
+
+    if form_top is not None:
+        ax.scatter(
+            [float(form_top.x)],
+            [float(form_top.y)],
+            [0.0],
+            color="orange",
+            s=40,
+            label="form_top",
+        )
+    if form_bottom is not None:
+        ax.scatter(
+            [float(form_bottom.x)],
+            [float(form_bottom.y)],
+            [0.0],
+            color="green",
+            s=40,
+            label="form_bottom",
+        )
 
     ax.set_xlabel("X (along spine)")
     ax.set_ylabel("Y (across)")

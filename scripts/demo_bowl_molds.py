@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from bowl_mold import build_mold_sections
-from plotting import plot_mold_sections_2d, plot_mold_sections_3d
+from plotting import plot_bowl, plot_mold_sections_2d, plot_mold_sections_3d
 from bowl_from_soundboard import build_bowl_for_lute
 from bowl_top_curves import SimpleAmplitudeCurve
 
@@ -48,6 +48,18 @@ def parse_args() -> argparse.Namespace:
         help="Physical board thickness along the spine (millimetres)",
     )
     parser.add_argument(
+        "--neck-limit",
+        type=float,
+        default=100,
+        help="Optional neck-side limit for mold faces (millimetres from top)",
+    )
+    parser.add_argument(
+        "--tail-limit",
+        type=float,
+        default=15,
+        help="Optional tail-side limit for mold faces (millimetres from top)",
+    )
+    parser.add_argument(
         "--plot3d",
         action="store_true",
         help="Render mold sections in 3D instead of 2D",
@@ -72,12 +84,27 @@ def main() -> int:
         n_stations=args.stations,
         board_thickness_mm=args.thickness,
         lute=lute,
+        neck_limit_mm=args.neck_limit,
+        tail_limit_mm=args.tail_limit,
     )
 
     if args.plot3d:
-        plot_mold_sections_3d(mold_sections)
+        plot_bowl(
+            lute,
+            sections,
+            ribs,
+            show_section_circles=False,
+            show_apexes=False,
+            show_top_curve=False,
+            show_soundboard=True,
+            mold_sections=mold_sections,
+        )
     else:
-        plot_mold_sections_2d(mold_sections)
+        plot_mold_sections_2d(
+            mold_sections,
+            form_top=lute.form_top,
+            form_bottom=lute.form_bottom,
+        )
 
     import matplotlib.pyplot as plt
 
