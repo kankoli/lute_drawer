@@ -383,7 +383,7 @@ def _resolve_top_curve(lute, top_curve):
 def build_bowl_for_lute(
     lute,
     n_ribs: int = 13,
-    n_sections: int = 10,
+    n_sections: int = 200,
     margin: float = 1e-3,
     debug: bool = False,
     top_curve=None,

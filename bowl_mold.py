@@ -78,13 +78,30 @@ def build_mold_sections(
 
     for idx in selected_indices:
         center_x = float(sections[idx].x)
-        face_positions = (
-            max(neck_limit, center_x - half_thickness),
-            min(tail_limit, center_x + half_thickness),
-        )
+
+        desired_left = center_x - half_thickness
+        desired_right = center_x + half_thickness
+
+        left_idx = int(np.clip(np.searchsorted(xs, desired_left), 0, len(xs) - 1))
+        if left_idx > 0 and abs(xs[left_idx - 1] - desired_left) < abs(xs[left_idx] - desired_left):
+            left_idx -= 1
+
+        right_idx = int(np.clip(np.searchsorted(xs, desired_right), 0, len(xs) - 1))
+        if right_idx + 1 < len(xs) and abs(xs[right_idx + 1] - desired_right) < abs(xs[right_idx] - desired_right):
+            right_idx += 1
+
+        if left_idx == right_idx:
+            raise ValueError(
+                "Board thickness is too small relative to input sections; "
+                "increase n_sections when sampling the bowl."
+            )
+
+        face_indices = [left_idx, right_idx]
+        actual_thickness = float(abs(xs[right_idx] - xs[left_idx]))
 
         faces: List[MoldSectionFace] = []
-        for x_face in face_positions:
+        for face_idx in face_indices:
+            x_face = float(xs[face_idx])
             rib_points = []
             for rib in ribs:
                 y_interp = np.interp(x_face, rib[:, 0], rib[:, 1])
@@ -106,7 +123,7 @@ def build_mold_sections(
         mold_sections.append(
             MoldSection(
                 center_x=center_x,
-                thickness=board_thickness_units,
+                thickness=actual_thickness,
                 faces=tuple(faces),
             )
         )
