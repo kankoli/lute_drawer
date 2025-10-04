@@ -22,6 +22,7 @@ from bowl_top_curves import (
     SideProfileParameters,
     SideProfilePerControlTopCurve,
     SimpleAmplitudeCurve,
+    TopCurve,
     resolve_top_curve,
 )
 
@@ -377,7 +378,22 @@ def _resolve_amplitude(lute, params: SideProfileParameters) -> float:
 
 
 def _resolve_top_curve(lute, top_curve):
-    return resolve_top_curve(lute, top_curve, _build_side_profile_top_curve)
+    resolved = resolve_top_curve(lute, top_curve, _build_side_profile_top_curve)
+
+    if isinstance(top_curve, type) and issubclass(top_curve, TopCurve):
+        label = top_curve.__name__
+    elif isinstance(top_curve, TopCurve):
+        label = type(top_curve).__name__
+    elif callable(top_curve):
+        label = getattr(top_curve, "__name__", None) or top_curve.__class__.__name__
+    else:
+        label = None
+
+    if label is None:
+        label = SideProfilePerControlTopCurve.__name__
+
+    setattr(lute, "top_curve_label", label)
+    return resolved
 
 
 def build_bowl_for_lute(

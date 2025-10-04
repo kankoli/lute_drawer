@@ -9,7 +9,6 @@ __all__ = [
     "plot_rib_surfaces",
     "set_axes_equal_3d",
     "plot_mold_sections_2d",
-    "plot_mold_sections_3d",
     "SvgRenderer",
 ]
 
@@ -17,10 +16,7 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     if name == "SvgRenderer":
         return import_module("plotting.svg").SvgRenderer
-    if name in {"plot_bowl", "plot_rib_surfaces", "set_axes_equal_3d"}:
+    if name in {"plot_bowl", "plot_rib_surfaces", "set_axes_equal_3d", "plot_mold_sections_2d"}:
         module = import_module("plotting.bowl")
-        return getattr(module, name)
-    if name in {"plot_mold_sections_2d", "plot_mold_sections_3d"}:
-        module = import_module("plotting.mold")
         return getattr(module, name)
     raise AttributeError(f"module 'plotting' has no attribute '{name}'")

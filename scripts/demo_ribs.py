@@ -54,7 +54,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allowance-right", type=float, default=0.0)
     parser.add_argument("--end-extension", type=float, default=10.0)
     parser.add_argument("--spacing", type=float, default=200.0)
-    parser.add_argument("--title", default="Extended Rib Surfaces")
+    parser.add_argument("--title", default=None)
     return parser.parse_args(argv)
 
 
@@ -81,7 +81,12 @@ def main() -> int:
         rib_index=args.rib_index,
         draw_all=args.all,
     )
-    plot_rib_surfaces(surfaces, spacing=opts.spacing, title=args.title)
+    plot_rib_surfaces(
+        surfaces,
+        spacing=opts.spacing,
+        title=args.title,
+        lute_name=type(lute).__name__,
+    )
     return 0
 
 

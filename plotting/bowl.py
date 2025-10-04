@@ -58,6 +58,7 @@ def plot_bowl(
     show_mold_rib_points: bool = True,
     show_soundboard_outline: bool = True,
     outline_offset_mm: float = 0.0,
+    top_curve_name: str | None = None,
 ):
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
@@ -198,6 +199,10 @@ def plot_bowl(
         arrays = [np.asarray(b, dtype=float).ravel() for b in bounds]
         return np.concatenate(arrays) if arrays else None
 
+    ax.set_xlabel("X (along spine)")
+    ax.set_ylabel("Y (across soundboard)")
+    ax.set_zlabel("Z (depth)")
+
     set_axes_equal_3d(
         ax,
         xs=_flatten(xs_bounds),
@@ -206,15 +211,64 @@ def plot_bowl(
     )
 
     ax.legend(loc="best")
+    lute_name = getattr(lute, "name", None) or type(lute).__name__
+    curve_label = top_curve_name or getattr(lute, "top_curve_label", None)
+    if curve_label:
+        ax.set_title(f"{lute_name} — Top Curve: {curve_label}")
+    else:
+        ax.set_title(lute_name)
     plt.tight_layout()
     plt.show()
 
+def plot_mold_sections_2d(
+    sections: Sequence[MoldSection],
+    *,
+    ax=None,
+    show_rib_points: bool = True,
+    invert_z: bool = True,
+    form_top=None,
+    form_bottom=None,
+    lute_name: str | None = None,
+):
+    """2D visualisation for mold section faces."""
+
+    if ax is None:
+        _, ax = plt.subplots()
+
+    for section in sections:
+        color = None
+        for face in section.faces:
+            label = f"X={face.x:.1f}" if color is None else None
+            if color is None:
+                (line,) = ax.plot(face.y, face.z, label=label)
+                color = line.get_color()
+            else:
+                ax.plot(face.y, face.z, label=label, color=color)
+            if show_rib_points:
+                ax.scatter(face.y, face.z, s=12, zorder=3, color=color)
+
+    if form_top is not None:
+        ax.scatter([float(form_top.y)], [0.0], color="orange", s=40, label="form_top")
+    if form_bottom is not None:
+        ax.scatter([float(form_bottom.y)], [0.0], color="green", s=40, label="form_bottom")
+
+    ax.set_xlabel("Y (soundboard across)")
+    ax.set_ylabel("Z (depth)")
+    if invert_z:
+        ax.invert_yaxis()
+    ax.set_aspect("equal", adjustable="box")
+    title = f"{lute_name} Mold Sections (2D)" if lute_name else "Mold Sections (2D)"
+    ax.set_title(title)
+    if sections:
+        ax.legend(loc="best", fontsize="small")
+    return ax
 
 def plot_rib_surfaces(
     surfaces: Sequence[tuple[int, Sequence[np.ndarray]]],
     *,
     spacing: float = 200.0,
-    title: str = "Extended Rib Surfaces",
+    title: str | None = None,
+    lute_name: str | None = None,
 ):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
@@ -228,9 +282,13 @@ def plot_rib_surfaces(
             poly.set_edgecolor("#204060")
             ax.add_collection3d(poly)
 
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
+    ax.set_xlabel("X (offset by rib index)")
+    ax.set_ylabel("Y (across)")
+    ax.set_zlabel("Z (depth)")
+    if title is None:
+        title = f"{lute_name} Extended Rib Surfaces" if lute_name else "Extended Rib Surfaces"
+    elif lute_name and lute_name not in title:
+        title = f"{lute_name} — {title}"
     ax.set_title(title)
     set_axes_equal_3d(ax)
     plt.tight_layout()

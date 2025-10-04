@@ -82,7 +82,7 @@ def plot_lute_ribs(
     allowance_right: float = 0.0,
     end_extension: float = 10.0,
     spacing: float = 200.0,
-    title: str = "Extended Rib Surfaces",
+    title: str | None = None,
 ):
     options = RibSurfaceOptions(
         plane_offset=plane_offset,
@@ -100,7 +100,12 @@ def plot_lute_ribs(
         rib_index=rib,
         draw_all=draw_all,
     )
-    plot_rib_surfaces(surfaces, spacing=opts.spacing, title=title)
+    plot_rib_surfaces(
+        surfaces,
+        spacing=opts.spacing,
+        title=title,
+        lute_name=type(lute).__name__,
+    )
 
 
 # ---------------------------------------------------------------------------

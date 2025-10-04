@@ -56,9 +56,9 @@ def _core_objects(lute: LuteSoundboard) -> List[object]:
         lute.point_neck_joint,
         lute.bridge,
         lute.spine,
-        lute.centerline,
-        lute.top_arc_circle,
-        lute.bottom_arc_circle,
+        # lute.centerline,
+        # lute.top_arc_circle,
+        # lute.bottom_arc_circle,
         *lute.final_arcs,
         *lute.final_reflected_arcs,
     ]
