@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from bowl_from_soundboard import build_bowl_for_lute
-from bowl_plotting import plot_bowl
+from plotting.bowl import plot_bowl
 from bowl_top_curves import resolve_top_curve
 
 

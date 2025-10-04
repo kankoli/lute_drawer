@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import lute_soundboard as lute_defs
 from lute_soundboard import LuteSoundboard
-from lute_renderers import SvgRenderer
+from plotting.svg import SvgRenderer
 
 
 def _iter_soundboard_classes(names: Iterable[str] | None = None) -> List[Tuple[str, Type[LuteSoundboard]]]:

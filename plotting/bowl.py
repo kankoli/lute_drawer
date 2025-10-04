@@ -1,7 +1,7 @@
 """Plotting helpers for bowl geometry."""
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np

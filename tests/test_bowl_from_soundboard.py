@@ -26,7 +26,7 @@ class BuildBowlForLuteTests(unittest.TestCase):
     def _make_lute(self):
         return lutes.ManolLavta()
 
-    @mock.patch("lute_renderers.SvgRenderer.draw", autospec=True)
+    @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_constant_curve_shapes(self, mock_draw):
         top_curve = lambda _: 1.0
         lute = self._make_lute()
@@ -62,7 +62,7 @@ class BuildBowlForLuteTests(unittest.TestCase):
         self.assertAlmostEqual(sections[0][2], 0.0)
         self.assertAlmostEqual(sections[-1][2], 0.0)
 
-    @mock.patch("lute_renderers.SvgRenderer.draw", autospec=True)
+    @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_enforces_minimum_rib_count(self, mock_draw):
         lute = self._make_lute()
         with warnings.catch_warnings():
@@ -72,7 +72,7 @@ class BuildBowlForLuteTests(unittest.TestCase):
         self.assertEqual(len(ribs), 2)
         self.assertEqual(ribs[0].shape[0], len(sections))
 
-    @mock.patch("lute_renderers.SvgRenderer.draw", autospec=True)
+    @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_without_soundhole(self, mock_draw):
         lute = lutes.BaltaSaz()
         with warnings.catch_warnings(record=True) as caught:

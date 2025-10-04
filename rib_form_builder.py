@@ -6,7 +6,7 @@ from typing import Iterable, List, Sequence
 import numpy as np
 
 from bowl_from_soundboard import Section, build_bowl_for_lute
-from bowl_plotting import plot_rib_surfaces
+from plotting.bowl import plot_rib_surfaces
 from bowl_top_curves import MidCurve
 
 EPS = 1e-9

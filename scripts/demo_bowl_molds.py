@@ -11,11 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from bowl_mold import (
-    build_mold_sections,
-    plot_mold_sections_2d,
-    plot_mold_sections_3d,
-)
+from bowl_mold import build_mold_sections
+from plotting import plot_mold_sections_2d, plot_mold_sections_3d
 from bowl_from_soundboard import build_bowl_for_lute
 from bowl_top_curves import SimpleAmplitudeCurve
 
@@ -48,7 +45,7 @@ def parse_args() -> argparse.Namespace:
         "--thickness",
         type=float,
         default=30.0,
-        help="Physical board thickness along the spine (geometry units)",
+        help="Physical board thickness along the spine (millimetres)",
     )
     parser.add_argument(
         "--plot3d",
@@ -73,7 +70,8 @@ def main() -> int:
         sections=sections,
         ribs=ribs,
         n_stations=args.stations,
-        board_thickness=args.thickness,
+        board_thickness_mm=args.thickness,
+        lute=lute,
     )
 
     if args.plot3d:

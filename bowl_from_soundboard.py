@@ -5,7 +5,7 @@
 # Usage:
 #   lute = ManolLavta()
 #   sections, ribs = build_bowl_for_lute(lute, n_ribs=13, n_sections=100)
-#   from bowl_plotting import plot_bowl
+#   from plotting.bowl import plot_bowl
 #   plot_bowl(lute, sections, ribs)
 
 from __future__ import annotations

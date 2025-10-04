@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import lute_soundboard as lute_defs
 from lute_soundboard import LuteSoundboard
 from bowl_from_soundboard import SideProfilePerControlTopCurve
-from lute_renderers import SvgRenderer
+from plotting.svg import SvgRenderer
 
 
 def ensure_matplotlib_stub() -> None:
