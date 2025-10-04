@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from lute_bowl.rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces
 from plotting.bowl import plot_rib_surfaces
+from plotting.step_renderers import write_rib_surfaces_step
 
 
 def _resolve_class(path: str):
@@ -55,6 +56,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--end-extension", type=float, default=10.0)
     parser.add_argument("--spacing", type=float, default=200.0)
     parser.add_argument("--title", default=None)
+    parser.add_argument(
+        "--step-out",
+        type=Path,
+        default=None,
+        help="Optional STEP (.stp) file for exported rib solids",
+    )
+    parser.add_argument(
+        "--step-base-thickness",
+        type=float,
+        default=25.0,
+        help="Depth of the rectangular backing block beneath the rib (mm)",
+    )
+    parser.add_argument(
+        "--step-support-extension",
+        type=float,
+        default=20.0,
+        help="Additional distance to extend beyond the form bottom along the spine (mm)",
+    )
+    parser.add_argument(
+        "--step-spacing",
+        type=float,
+        default=None,
+        help="Optional separation between ribs in the STEP export (millimetres)",
+    )
     return parser.parse_args(argv)
 
 
@@ -87,6 +112,19 @@ def main() -> int:
         title=args.title,
         lute_name=type(lute).__name__,
     )
+
+    if args.step_out is not None:
+        scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+        write_rib_surfaces_step(
+            surfaces,
+            args.step_out,
+            unit_scale=scale,
+            base_thickness_mm=args.step_base_thickness,
+            support_extension_mm=args.step_support_extension,
+            spacing_mm=args.step_spacing,
+            author="demo_ribs",
+            organization="lute_drawer",
+        )
     return 0
 
 

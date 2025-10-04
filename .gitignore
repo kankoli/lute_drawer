@@ -190,3 +190,5 @@ Temporary Items
 
 # Ignore the svg output files
 *.svg
+
+*.stp
