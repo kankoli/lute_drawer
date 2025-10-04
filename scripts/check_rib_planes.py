@@ -16,10 +16,10 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 
 from analysis_utils import ensure_matplotlib_stub, sandboxed_renderer
-from bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "bowl_top_curves.MidCurve"
+DEFAULT_CURVE = "lute_bowl.bowl_top_curves.MidCurve"
 CONCAVITY_TOL = 0.05
 
 

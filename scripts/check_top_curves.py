@@ -15,7 +15,7 @@ from analysis_utils import (
     iter_concrete_lute_classes,
     sandboxed_renderer,
 )
-from bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
 
 
 @dataclass

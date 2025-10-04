@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from bowl_from_soundboard import Section
-from bowl_mold import MoldSection
+from lute_bowl.bowl_from_soundboard import Section
+from lute_bowl.bowl_mold import MoldSection
 
 
 def set_axes_equal_3d(ax, xs=None, ys=None, zs=None, use_ortho=True):

@@ -11,10 +11,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from bowl_mold import build_mold_sections
+from lute_bowl.bowl_mold import build_mold_sections
 from plotting import plot_bowl, plot_mold_sections_2d
-from bowl_from_soundboard import build_bowl_for_lute
-from bowl_top_curves import SimpleAmplitudeCurve, FlatBackCurve
+from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, FlatBackCurve
 
 
 def _resolve_class(path: str):
@@ -30,7 +30,7 @@ def _resolve_class(path: str):
 
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "bowl_top_curves.MidCurve"
+DEFAULT_CURVE = "lute_bowl.bowl_top_curves.MidCurve"
 
 
 def parse_args() -> argparse.Namespace:

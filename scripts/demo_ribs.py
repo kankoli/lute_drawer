@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces
+from lute_bowl.rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces
 from plotting.bowl import plot_rib_surfaces
 
 
@@ -28,7 +28,7 @@ def _resolve_class(path: str):
 
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "bowl_top_curves.MidCurve"
+DEFAULT_CURVE = "lute_bowl.bowl_top_curves.MidCurve"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

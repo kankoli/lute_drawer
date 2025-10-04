@@ -6,7 +6,7 @@ from typing import List, Sequence
 
 import numpy as np
 
-from bowl_from_soundboard import Section
+from .bowl_from_soundboard import Section
 
 
 @dataclass(frozen=True)

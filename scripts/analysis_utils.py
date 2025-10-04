@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import lute_soundboard as lute_defs
 from lute_soundboard import LuteSoundboard
-from bowl_from_soundboard import SideProfilePerControlTopCurve
+from lute_bowl.bowl_from_soundboard import SideProfilePerControlTopCurve
 from plotting.svg import SvgRenderer
 
 
@@ -74,8 +74,8 @@ def iter_concrete_lute_classes(names: Iterable[str] | None = None) -> List[Tuple
 
 
 def collect_top_curve_classes() -> List[Tuple[str, Type[SideProfilePerControlTopCurve]]]:
-    """Discover concrete top-curve classes defined in bowl_from_soundboard."""
-    import bowl_from_soundboard as bfs
+    """Discover concrete top-curve classes defined in lute_bowl.bowl_from_soundboard."""
+    import lute_bowl.bowl_from_soundboard as bfs
 
     curves: List[Tuple[str, Type[SideProfilePerControlTopCurve]]] = []
     for name, cls in inspect.getmembers(bfs, inspect.isclass):
