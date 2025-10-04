@@ -19,7 +19,7 @@ class SvgRenderer:
             os.mkdir(self.output_dir)
 
     def draw(self, objects: Iterable[object]) -> None:
-        from geo_dsl import GeoArc
+        from utils.geo_dsl import GeoArc
         from sympy import Circle, Line, Point, Segment
 
         dwg = svgwrite.Drawing(

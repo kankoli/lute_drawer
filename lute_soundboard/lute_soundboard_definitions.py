@@ -7,7 +7,7 @@ from typing import Callable, List, Sequence, Tuple
 
 import sympy
 
-from geo_dsl import GeoDSL
+from utils.geo_dsl import GeoDSL
 
 
 # ---------------------------------------------------------------------------

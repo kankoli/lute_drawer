@@ -9,7 +9,7 @@ from typing import Iterable, List, Tuple
 
 import sys
 
-from analysis_utils import (
+from utils.analysis_utils import (
     collect_top_curve_classes,
     ensure_matplotlib_stub,
     iter_concrete_lute_classes,
