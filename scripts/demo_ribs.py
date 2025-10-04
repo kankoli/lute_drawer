@@ -46,7 +46,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Fully qualified top-curve class (default: {DEFAULT_CURVE})",
     )
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals")
-    parser.add_argument("--sections", type=int, default=40, help="Number of sections to sample")
+    parser.add_argument("--sections", type=int, default=200, help="Number of sections to sample")
     parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based)")
     parser.add_argument("--all", action="store_true", help="Plot all ribs instead of a single one")
     parser.add_argument("--plane-offset", type=float, default=10.0)

@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.bowl_mold import build_mold_sections
+from plotting.step_renderers import write_mold_sections_step
 from plotting import plot_bowl, plot_mold_sections_2d
 from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
 from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, FlatBackCurve
@@ -76,6 +77,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Render mold sections in 2D instead of 3D",
     )
+    parser.add_argument(
+        "--step-out",
+        type=Path,
+        default=None,
+        help="Optional STEP (.stp) filepath to export mold faces as polylines",
+    )
     return parser.parse_args()
 
 
@@ -102,6 +109,17 @@ def main() -> int:
             neck_limit_mm=args.neck_limit,
             tail_limit_mm=args.tail_limit,
         )
+
+        if args.step_out is not None:
+            scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+            step_path = write_mold_sections_step(
+                mold_sections,
+                args.step_out,
+                unit_scale=scale,
+                author="demo_bowl_molds",
+                organization="lute_drawer",
+            )
+            print(f"STEP export written to {step_path}")
 
         if args.plot2d:
             plot_mold_sections_2d(
