@@ -163,29 +163,7 @@ def _rib_surface_extended(
     p0_left = rib1.mean(axis=0) - (plane_offset + allowance_left) * nrm
     p0_right = rib2.mean(axis=0) + (plane_offset + allowance_right) * nrm
 
-    strips = []
-
-    tip_top = 0.5 * (rib1[0] + rib2[0])
-    across0 = (rib2[1] - rib1[1]) if n > 1 else np.array([1.0, 0.0, 0.0])
-    across0 = _align_with_normal(_safe_unit(across0), nrm)
-    left_top_cap = _intersect_line_plane_pd(tip_top, across0, p0_left, nrm)
-    right_top_cap = _intersect_line_plane_pd(tip_top, across0, p0_right, nrm)
-    if left_top_cap is None:
-        left_top_cap = tip_top - nrm * (plane_offset + allowance_left)
-    if right_top_cap is None:
-        right_top_cap = tip_top + nrm * (plane_offset + allowance_right)
-    strips.append([left_top_cap, tip_top, tip_top, right_top_cap])
-
-    tip_dir0 = rib1[1] - rib1[0] if n > 1 else np.array([0.0, 0.0, 1.0])
-    tip_dir0 = _safe_unit(tip_dir0)
-    tip_top_ext = tip_top - tip_dir0 * end_extension
-    left_top_ext = _intersect_line_plane_pd(tip_top_ext, across0, p0_left, nrm)
-    right_top_ext = _intersect_line_plane_pd(tip_top_ext, across0, p0_right, nrm)
-    if left_top_ext is None:
-        left_top_ext = tip_top_ext - nrm * (plane_offset + allowance_left)
-    if right_top_ext is None:
-        right_top_ext = tip_top_ext + nrm * (plane_offset + allowance_right)
-    strips.insert(0, [left_top_ext, tip_top_ext, tip_top_ext, right_top_ext])
+    strips: list[list[np.ndarray]] = []
 
     for j in range(1, n - 1):
         a = rib1[j]
@@ -195,27 +173,9 @@ def _rib_surface_extended(
         if left_pt is not None and right_pt is not None:
             strips.append([left_pt, a, b, right_pt])
 
-    tip_bot = 0.5 * (rib1[-1] + rib2[-1])
-    across1 = (rib2[-2] - rib1[-2]) if n > 1 else np.array([1.0, 0.0, 0.0])
-    across1 = _align_with_normal(_safe_unit(across1), nrm)
-    left_bot_cap = _intersect_line_plane_pd(tip_bot, across1, p0_left, nrm)
-    right_bot_cap = _intersect_line_plane_pd(tip_bot, across1, p0_right, nrm)
-    if left_bot_cap is None:
-        left_bot_cap = tip_bot - nrm * (plane_offset + allowance_left)
-    if right_bot_cap is None:
-        right_bot_cap = tip_bot + nrm * (plane_offset + allowance_right)
-    strips.append([left_bot_cap, tip_bot, tip_bot, right_bot_cap])
-
-    tip_dir1 = rib1[-1] - rib1[-2] if n > 1 else np.array([0.0, 0.0, 1.0])
-    tip_dir1 = _safe_unit(tip_dir1)
-    tip_bot_ext = tip_bot + tip_dir1 * end_extension
-    left_bot_ext = _intersect_line_plane_pd(tip_bot_ext, across1, p0_left, nrm)
-    right_bot_ext = _intersect_line_plane_pd(tip_bot_ext, across1, p0_right, nrm)
-    if left_bot_ext is None:
-        left_bot_ext = tip_bot_ext - nrm * (plane_offset + allowance_left)
-    if right_bot_ext is None:
-        right_bot_ext = tip_bot_ext + nrm * (plane_offset + allowance_right)
-    strips.append([left_bot_ext, tip_bot_ext, tip_bot_ext, right_bot_ext])
+    strips = [np.asarray(s, dtype=float) for s in strips]
+    if len(strips) < 2:
+        return []
 
     quads = []
     for j in range(len(strips) - 1):
@@ -224,9 +184,6 @@ def _rib_surface_extended(
             p1, p2 = np.array(s1[k]), np.array(s1[(k + 1) % 4])
             q2, q1 = np.array(s2[(k + 1) % 4]), np.array(s2[k])
             quads.append(np.array([p1, p2, q2, q1]))
-
-    quads.append(np.array(strips[0]))
-    quads.append(np.array(strips[-1]))
 
     return _normalize_quads(rib1, rib2, quads)
 
