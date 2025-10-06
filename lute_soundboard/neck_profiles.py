@@ -4,15 +4,21 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 
+
 class NeckProfile(ABC):
     @abstractmethod
     def make_neck_joint(self, lute) -> None:
-        """Populate lute.point_neck_joint based on the current geometry."""
+        """Populate ``lute.point_neck_joint``."""
+
+
+class NeckManual(NeckProfile):
+    """No-op neck placement; instrument supplies the joint."""
+
+    def make_neck_joint(self, lute) -> None:  # noqa: D401 - intentionally empty
+        return None
 
 
 class NeckThroughTop2(NeckProfile):
-    """Intersect helper circle with spine to locate the neck joint."""
-
     def make_neck_joint(self, lute) -> None:
         lute.ensure_top_2_point()
         helper_line = lute.geo.line(lute.top_2, lute.top_arc_center)
@@ -39,6 +45,7 @@ class NeckQuartered(NeckProfile):
 
 __all__ = [
     "NeckProfile",
+    "NeckManual",
     "NeckThroughTop2",
     "NeckDoubleGolden",
     "NeckQuartered",

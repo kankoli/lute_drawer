@@ -4,41 +4,43 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 
+
+
 class TopArc(ABC):
     @abstractmethod
-    def _get_top_arc_radius(self) -> float:
-        """Return the radius of the top arc in units of self.unit."""
+    def radius(self, lute) -> float:
+        """Return top-arc radius in geometry units."""
 
-    def make_top_arc(self) -> None:
-        radius = self._get_top_arc_radius()
-        self.top_arc_radius = radius
-        self.top_arc_center = self.geo.translate_y(self.form_side, radius)
-        self.top_arc_circle = self.geo.circle_by_center_and_radius(self.top_arc_center, radius)
+    def configure(self, lute) -> None:
+        r = self.radius(lute)
+        lute.top_arc_radius = r
+        lute.top_arc_center = lute.geo.translate_y(lute.form_side, r)
+        lute.top_arc_circle = lute.geo.circle_by_center_and_radius(lute.top_arc_center, r)
 
 
 class TopArcType1(TopArc):
-    def _get_top_arc_radius(self) -> float:
-        return 4 * self.unit
+    def radius(self, lute) -> float:
+        return 4 * lute.unit
 
 
 class TopArcType2(TopArc):
-    def _get_top_arc_radius(self) -> float:
-        return 5 * self.unit
+    def radius(self, lute) -> float:
+        return 5 * lute.unit
 
 
 class TopArcType3(TopArc):
-    def _get_top_arc_radius(self) -> float:
-        return 6 * self.unit
+    def radius(self, lute) -> float:
+        return 6 * lute.unit
 
 
 class TopArcType4(TopArc):
-    def _get_top_arc_radius(self) -> float:
-        return 7 * self.unit
+    def radius(self, lute) -> float:
+        return 7 * lute.unit
 
 
 class TopArcType10(TopArc):
-    def _get_top_arc_radius(self) -> float:
-        return 13 * self.unit
+    def radius(self, lute) -> float:
+        return 13 * lute.unit
 
 
 __all__ = [

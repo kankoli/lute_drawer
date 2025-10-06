@@ -8,12 +8,17 @@ import sympy
 class SoundholePlacement(ABC):
     @abstractmethod
     def center(self, lute):
-        """Return the soundhole center point."""
+        """Return the soundhole centre point."""
 
 
 class SoundholeAtNeckBridgeMidpoint(SoundholePlacement):
     def center(self, lute):
         return lute.point_neck_joint.midpoint(lute.bridge)
+
+
+class SoundholeNonePlacement(SoundholePlacement):
+    def center(self, lute):  # type: ignore[override]
+        return None
 
 
 class SoundholeSizing(ABC):
@@ -22,7 +27,8 @@ class SoundholeSizing(ABC):
         """Return the soundhole radius."""
 
 
-class SoundholeOneThirdOfSegment(SoundholeSizing):
+class SoundholeOneThird(SoundholeSizing):
+    """ Diameter is one-third of cross-section of soundboard at soundhole center """
     def radius(self, lute):
         center = lute.soundhole_center
         perp = lute.spine.perpendicular_line(center)
@@ -30,7 +36,8 @@ class SoundholeOneThirdOfSegment(SoundholeSizing):
         return center.distance(intersection) / 3
 
 
-class SoundholeGoldenRatioOfSegment(SoundholeSizing):
+class SoundholeGoldenRatio(SoundholeSizing):
+    """ Diameter is golden-ratio of cross-section of soundboard at soundhole center """
     def radius(self, lute):
         center = lute.soundhole_center
         perp = lute.spine.perpendicular_line(center)
@@ -52,12 +59,54 @@ class SoundholeNone(SoundholeSizing):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Small soundhole helpers
+# ---------------------------------------------------------------------------
+
+
+class SmallSoundholeStrategy(ABC):
+    @abstractmethod
+    def build(self, lute) -> Sequence:
+        """Return iterable of small soundhole circles."""
+
+
+class NoSmallSoundholes(SmallSoundholeStrategy):
+    def build(self, lute) -> Sequence:
+        return ()
+
+
+class SmallSoundholesTurkish(SmallSoundholeStrategy):
+    def build(self, lute) -> Sequence:
+        center = lute.soundhole_center
+        axis = center.midpoint(lute.form_center)
+        line = lute.spine.perpendicular_line(axis)
+        locator = lute.geo.circle_by_center_and_point(axis, lute.form_center)
+        centres = locator.intersection(line)
+        return [lute.geo.circle_by_center_and_radius(c, lute.soundhole_radius / 2) for c in centres]
+
+
+class SmallSoundholesBrussels0164(SmallSoundholeStrategy):
+    def build(self, lute) -> Sequence:
+        radius = float(lute.soundhole_radius) / 3.0
+        axis = lute.geo.simple_point(lute.geo.translate_x(lute.soundhole_center, 4.0 * radius))
+        line = lute.spine.perpendicular_line(axis)
+        locator = lute.geo.circle_by_center_and_radius(axis, 3.0 * radius)
+        centres = [lute.geo.simple_point(p) for p in locator.intersection(line)]
+        return [lute.geo.circle_by_center_and_radius(c, float(lute.soundhole_radius) / 4.0) for c in centres]
+
+
 __all__ = [
     "SoundholePlacement",
     "SoundholeAtNeckBridgeMidpoint",
+    "SoundholeNonePlacement",
     "SoundholeSizing",
-    "SoundholeOneThirdOfSegment",
-    "SoundholeGoldenRatioOfSegment",
+    "SoundholeOneThird",
+    "SoundholeGoldenRatio",
     "SoundholeFixedFraction",
     "SoundholeNone",
+
+    "SmallSoundholeStrategy",
+    "NoSmallSoundholes",
+    "SmallSoundholesTurkish",
+    "SmallSoundholesBrussels0164"
 ]
