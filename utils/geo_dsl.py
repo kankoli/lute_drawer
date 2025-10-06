@@ -184,7 +184,6 @@ class GeoDSL:
         Dividing towards p2:
         p1 ---------- G ----- p2
         """
-        dwg = svgwrite.Drawing(filename='golden_ratio_divider.svg', profile='tiny', size=(2000, 2000))
         line_between = self.line(p1, p2)
 
         big_circle = self.circle_by_compass(p2, p1, p2)

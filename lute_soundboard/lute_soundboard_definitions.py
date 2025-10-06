@@ -57,18 +57,18 @@ class LuteSoundboard(ABC):
     # --- high level pipeline -------------------------------------------------
 
     def _build_geometry(self) -> None:
-        self._base_construction()
-        self.ensure_top_2_point()
+        self.__base_construction()
+
         self.neck_profile.make_neck_joint(self)
         self._make_spine_points()
         self._make_bottom_arc_circle()
-        self._configure_soundhole()
+        self.__configure_soundhole()
         self.lower_arc_builder.build(self)
-        self._finalise_arcs()
+        self.__finalise_arcs()
 
     # --- base construction ---------------------------------------------------
 
-    def _base_construction(self) -> None:
+    def __base_construction(self) -> None:
         self.form_center = self.geo.point(self.geo.display_size * 5.5, self.geo.display_size * 3)
         self.A = self.geo.point(self.form_center.x - self.unit, self.form_center.y - self.unit)
         self.B = self.geo.point(self.A.x + self.unit, self.A.y)
@@ -80,21 +80,19 @@ class LuteSoundboard(ABC):
         intersections = self.top_arc_circle.intersection(self.spine)
         self.form_top = self.geo.pick_west_point(*intersections)
 
+        self.__make_top_points()
+
     @abstractmethod
     def _make_spine_points(self) -> None:
         """Populate form_bottom, bridge, and any additional geometry helpers."""
 
-    def ensure_top_2_point(self) -> None:
-        if not hasattr(self, "top_2"):
-            self._make_top_2_point()
-
-    def _make_top_2_point(self) -> None:
+    def __make_top_points(self) -> None:
         self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
 
     def _make_bottom_arc_circle(self) -> None:
         self.bottom_arc_circle = self.geo.circle_by_center_and_point(self.form_top, self.form_bottom)
 
-    def _configure_soundhole(self) -> None:
+    def __configure_soundhole(self) -> None:
         center = self.soundhole_center()
         radius = self.soundhole_radius()
         if center is not None and radius is not None:
@@ -128,7 +126,7 @@ class LuteSoundboard(ABC):
             self._soundhole_radius = None
         return self._soundhole_radius
 
-    def _finalise_arcs(self) -> None:
+    def __finalise_arcs(self) -> None:
         self.final_arcs = [self.geo.arc_by_center_and_two_points(*params) for params in self.arc_params]
         self.final_reflected_arcs = [self.geo.reflect(arc, self.spine) for arc in self.final_arcs]
 
@@ -137,7 +135,7 @@ class LuteSoundboard(ABC):
     def measurement_pairs(self) -> List[Tuple[str, float]]:
         return [
             ("Unit", self.unit),
-            ("Form Width", self._form_width()),
+            ("Form Width", self.__form_width()),
             ("Form Length", self.form_bottom.distance(self.form_top)),
             ("Neck to Bottom", self.form_bottom.distance(self.point_neck_joint)),
             ("Neck to Bridge", self.point_neck_joint.distance(self.bridge)),
@@ -145,10 +143,11 @@ class LuteSoundboard(ABC):
             ("(1/3-Neck) Neck length", (1 / 2) * self.point_neck_joint.distance(self.bridge)),
             ("(Half-Neck) Scale", 2 * self.point_neck_joint.distance(self.bridge)),
             ("(Half-Neck) Neck", self.point_neck_joint.distance(self.bridge)),
-            ("Neck-joint width", self.form_width_at_point(self.point_neck_joint)),
+            ("Neck-joint width", self.__form_width_at_point(self.point_neck_joint)),
         ]
 
-    def form_width_at_point(self, point) -> float:
+    def __form_width_at_point(self, point) -> float:
+        # Only measuring towards top_arc_circle, not generalized with all arcs
         perpendicular_line = self.spine.perpendicular_line(point)
         intersection = self.geo.pick_point_closest_to(
             self.spine,
@@ -156,7 +155,8 @@ class LuteSoundboard(ABC):
         )
         return 2 * point.distance(intersection)
 
-    def _form_width(self) -> float:
+    def __form_width(self) -> float:
+        # Loops through intersection points of the arcs and finds the most distance
         return max(2 * arc[1].distance(self.spine) for arc in self.arc_params)
 
     def measurements(self) -> List[SoundboardMeasurement]:
@@ -169,7 +169,10 @@ class LuteSoundboard(ABC):
     def unit_in_mm(self) -> float:
         return getattr(self, "unit_mm", 100.0)
 
-# Derived classes and concrete designs would follow here...
+
+# ---------------------------------------------------------------------------
+# Concrete classes
+# ---------------------------------------------------------------------------
 
 
 class ManolLavta(LuteSoundboard):
