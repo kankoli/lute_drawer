@@ -30,7 +30,7 @@ class SoundholeSizing(ABC):
 class SoundholeOneThird(SoundholeSizing):
     """ Diameter is one-third of cross-section of soundboard at soundhole center """
     def radius(self, lute):
-        center = lute.soundhole_center
+        center = lute.soundhole_center()
         perp = lute.spine.perpendicular_line(center)
         intersection = lute.geo.pick_point_closest_to(lute.spine, lute.top_arc_circle.intersection(perp))
         return center.distance(intersection) / 3
@@ -39,7 +39,7 @@ class SoundholeOneThird(SoundholeSizing):
 class SoundholeGoldenRatio(SoundholeSizing):
     """ Diameter is golden-ratio of cross-section of soundboard at soundhole center """
     def radius(self, lute):
-        center = lute.soundhole_center
+        center = lute.soundhole_center()
         perp = lute.spine.perpendicular_line(center)
         intersection = lute.geo.pick_point_closest_to(lute.spine, lute.top_arc_circle.intersection(perp))
         length = center.distance(intersection)

@@ -89,16 +89,16 @@ class LuteSoundboard(ABC):
             self._make_top_2_point()
 
     def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
+        self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
 
     def _make_bottom_arc_circle(self) -> None:
         self.bottom_arc_circle = self.geo.circle_by_center_and_point(self.form_top, self.form_bottom)
 
     def _configure_soundhole(self) -> None:
         center = self.soundhole_center()
-        if center is not None:
+        radius = self.soundhole_radius()
+        if center is not None and radius is not None:
             self.soundhole_center = center
-            radius = self.soundhole_sizing.radius(self)
             self.soundhole_radius = radius
             self.soundhole_circle = self.geo.circle_by_center_and_radius(center, radius)
             self.small_soundhole_circles = list(self.small_soundhole_strategy.build(self))
@@ -118,6 +118,15 @@ class LuteSoundboard(ABC):
         except AttributeError:
             self._soundhole_center = None
         return self._soundhole_center
+
+    def soundhole_radius(self):
+        if hasattr(self, "_soundhole_radius"):
+            return self._soundhole_radius
+        try:
+            self._soundhole_radius = self.soundhole_sizing.radius(self)
+        except AttributeError:
+            self._soundhole_radius = None
+        return self._soundhole_radius
 
     def _finalise_arcs(self) -> None:
         self.final_arcs = [self.geo.arc_by_center_and_two_points(*params) for params in self.arc_params]
@@ -159,12 +168,6 @@ class LuteSoundboard(ABC):
 
     def unit_in_mm(self) -> float:
         return getattr(self, "unit_mm", 100.0)
-
-    # --- abstract extension hooks -------------------------------------------
-
-    def _make_top_2_point(self) -> None:  # default already defined
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-
 
 # Derived classes and concrete designs would follow here...
 
@@ -209,8 +212,6 @@ class ManolLavta_Athens(ManolLavta):
 class Brussels0164(LuteSoundboard):
     top_arc = TopArcType1()
     neck_profile = NeckThroughTop2()
-    soundhole_sizing = SoundholeOneThird()
-    soundhole_placement = SoundholeAtNeckBridgeMidpoint()
     small_soundhole_strategy = SmallSoundholesBrussels0164()
     lower_arc_builder = SimpleBlendDynamic(
         lambda lute: lute.soundhole_center.distance(lute.form_center)
@@ -218,19 +219,18 @@ class Brussels0164(LuteSoundboard):
         else lute.unit,
     )
 
-    def _make_top_2_point(self) -> None:
-        self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
-
     def _make_spine_points(self) -> None:
+        # Shortcut to a half-sized vesica pisces (2 * unit arc type 1 -> 1 * unit)
+        # top_3 falls onto the upper intersection
+        # Lower intersection
         self.form_bottom = self.geo.reflect(self.top_3, self.form_center)
         self.bridge = self.geo.translate_x(self.form_bottom, -self.unit)
-        center = self.geo.divide_distance(self.top_3, self.form_center, 3)[0]
-        self._soundhole_center = center
-        self.point_neck_joint = self.geo.reflect(self.bridge, center)
 
-    def _configure_soundhole(self) -> None:
-        self._soundhole_center = getattr(self, "_soundhole_center", None) or self.geo.divide_distance(self.top_3, self.form_center, 3)[0]
-        super()._configure_soundhole()
+        self._soundhole_center = self.geo.divide_distance(self.top_3, self.form_center, 3)[0]
+        self._soundhole_radius = self.top_3.distance(self._soundhole_center)
+
+        self.point_neck_joint = self.geo.reflect(self.bridge, self._soundhole_center)
+
 
     def measurement_pairs(self) -> List[Tuple[str, float]]:
         pairs = super().measurement_pairs()
@@ -256,6 +256,7 @@ class Brussels0404(LuteSoundboard):
 
 
 class VesicaPiscesOud(LuteSoundboard):
+    """ Not a true Vesica Pisces construction, only form bottom is 2 units away from center """
     top_arc = TopArcType2()
     neck_profile = NeckDoubleGolden()
     soundhole_sizing = SoundholeFixedFraction(0.5)
@@ -263,12 +264,9 @@ class VesicaPiscesOud(LuteSoundboard):
     lower_arc_builder = SimpleBlend()
     unit_mm = 366 / 4
 
-    def _make_top_2_point(self) -> None:
-        self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
-
     def _make_spine_points(self) -> None:
-        self.form_bottom = self.geo.reflect(self.top_3, self.form_center)
-        self.bridge = self.geo.reflect(self.top_4, self.form_center)
+        self.form_bottom = self.geo.translate_x(self.form_center, 2 * self.unit)
+        self.bridge = self.geo.translate_x(self.form_center, self.unit)
         self._soundhole_center = self.top_3.midpoint(self.top_4)
 
 
@@ -279,11 +277,6 @@ class TurkishOud2(LuteSoundboard):
     small_soundhole_strategy = SmallSoundholesTurkish()
     lower_arc_builder = SimpleBlend()
     unit_mm = 366 / 4
-
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-        self.top_3 = self.geo.translate_x(self.form_top, 2 * self.unit)
-        self.top_4 = self.geo.translate_x(self.form_top, 3 * self.unit)
 
     def _make_spine_points(self) -> None:
         soundhole_center = self.geo.golden_ratio_divider(self.top_4, self.top_3)
@@ -321,11 +314,6 @@ class TurkishOud(LuteSoundboard):
     small_soundhole_strategy = NoSmallSoundholes()
     lower_arc_builder = SimpleBlend()
     unit_mm = 366 / 4
-
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-        self.top_3 = self.geo.translate_x(self.form_top, 2 * self.unit)
-        self.top_4 = self.geo.translate_x(self.form_top, 3 * self.unit)
 
     def _make_spine_points(self) -> None:
         self.vertical_unit = 16 * self.unit / 15
@@ -374,11 +362,6 @@ class IstanbulLavta(LuteSoundboard):
     lower_arc_builder = StepCircleBuilder(0.5, 1.25)
     unit_mm = 300 / 4
 
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-        self.top_3 = self.geo.translate_x(self.form_top, 2 * self.unit)
-        self.top_4 = self.geo.translate_x(self.form_top, 3 * self.unit)
-
     def _make_spine_points(self) -> None:
         self.form_bottom = self.geo.translate_x(self.form_top, 6 * self.unit)
         self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 4
@@ -391,11 +374,6 @@ class IkwanAlSafaOud(LuteSoundboard):
     soundhole_placement = SoundholeAtNeckBridgeMidpoint()
     soundhole_sizing = SoundholeFixedFraction(0.5)
     lower_arc_builder = SimpleBlendScaled(2.0)
-
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-        self.top_3 = self.geo.translate_x(self.form_top, 2 * self.unit)
-        self.top_4 = self.geo.translate_x(self.form_top, 3 * self.unit)
 
     def _make_spine_points(self) -> None:
         self.bridge = self.geo.translate_x(self.form_center, 3 * self.unit / 4)
@@ -411,11 +389,6 @@ class HannaNahatOud(LuteSoundboard):
     lower_arc_builder = SideCircleTangentScaled(3.0, 1.25)
     unit_mm = 365 / 4
 
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
-        self.top_3 = self.geo.translate_x(self.form_top, 2 * self.unit)
-        self.top_4 = self.geo.translate_x(self.form_top, 3 * self.unit)
-
     def _make_spine_points(self) -> None:
         self.bridge = self.geo.translate_x(self.form_center, 3 * self.unit / 4)
         self.form_bottom = self.geo.translate_x(self.bridge, self.unit)
@@ -430,25 +403,14 @@ class HochLavta(LuteSoundboard):
         else lute.unit,
     )
 
-    def _make_top_2_point(self) -> None:
-        self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
-
     def _make_spine_points(self) -> None:
+        # Shortcut to a half-sized vesica pisces (2 * unit arc type 1 -> 1 * unit)
+        # top_3 falls onto the upper intersection
         self.form_bottom = self.geo.reflect(self.top_3, self.form_center)
         self.bridge = self.geo.reflect(self.top_4, self.form_center)
-        self.neck_profile.make_neck_joint(self)
-        center = self.top_3.midpoint(self.top_4.midpoint(self.form_center))
-        self._soundhole_center = center
 
-    def _configure_soundhole(self) -> None:
-        center = self.top_3.midpoint(self.top_4.midpoint(self.form_center))
-        self._soundhole_center = center
-        radius = center.distance(self.top_3)
-        self.soundhole_center = center
-        self.soundhole_radius = radius
-        self.soundhole_circle = self.geo.circle_by_center_and_radius(center, radius)
-        self.small_soundhole_circles = []
-        self.small_soundhole_centers = []
+        self._soundhole_center = self.top_3.midpoint(self.top_4.midpoint(self.form_center))
+        self._soundhole_radius = self._soundhole_center.distance(self.top_3)
 
 
 class LavtaSmallThreeCourse(LuteSoundboard):
@@ -458,17 +420,11 @@ class LavtaSmallThreeCourse(LuteSoundboard):
     soundhole_sizing = SoundholeOneThird()
     lower_arc_builder = SimpleBlendScaled(1.0)
 
-    def _make_top_2_point(self) -> None:
-        self.top_2, self.top_3, self.top_4 = self.geo.divide_distance(self.form_top, self.form_center, 4)
-
     def _make_spine_points(self) -> None:
+        # Shortcut to a half-sized vesica pisces (2 * unit arc type 1 -> 1 * unit)
+        # top_3 falls onto the upper intersection
         self.form_bottom = self.geo.reflect(self.top_3, self.form_center)
         self.bridge = self.geo.reflect(self.top_4, self.form_center)
-        self.neck_profile.make_neck_joint(self)
-
-    def _configure_soundhole(self) -> None:
-        self.neck_profile.make_neck_joint(self)
-        super()._configure_soundhole()
 
 
 class BaltaSaz(LuteSoundboard):
@@ -478,9 +434,6 @@ class BaltaSaz(LuteSoundboard):
     soundhole_sizing = SoundholeNone()
     lower_arc_builder = SimpleBlendScaled(1.5)
     unit_mm = 200 / 4
-
-    def _make_top_2_point(self) -> None:
-        self.top_2 = self.geo.translate_x(self.form_top, self.unit)
 
     def _make_spine_points(self) -> None:
         self.bridge = self.geo.translate_x(self.form_center, self.unit)
