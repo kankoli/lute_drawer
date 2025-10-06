@@ -405,9 +405,6 @@ def build_bowl_for_lute(
     top_curve=None,
 ):
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
-    draw = getattr(lute, "draw_all", None)
-    if callable(draw):
-        draw()
     z_top = _resolve_top_curve(lute, top_curve)
 
     xs = _select_section_positions(lute, n_sections, margin, debug)
