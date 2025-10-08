@@ -11,8 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from lute_bowl.rib_form_builder import RibSurfaceOptions, build_extended_rib_surfaces
-from plotting.bowl import plot_rib_surfaces
+from lute_bowl.rib_form_builder import plot_lute_ribs
 from plotting.step_renderers import write_rib_surfaces_step
 
 
@@ -89,28 +88,17 @@ def main() -> int:
     curve_cls = _resolve_class(args.curve)
     lute = lute_cls()
 
-    options = RibSurfaceOptions(
-        plane_offset=args.plane_offset,
-        allowance_left=args.allowance_left,
-        allowance_right=args.allowance_right,
-        end_extension=args.end_extension,
-        spacing=args.spacing,
-    )
-
-    _, surfaces, opts = build_extended_rib_surfaces(
+    surfaces = plot_lute_ribs(
         lute,
         top_curve=curve_cls,
         n_ribs=args.ribs,
         n_sections=args.sections,
-        options=options,
-        rib_index=args.rib_index,
-        draw_all=args.all,
-    )
-    plot_rib_surfaces(
-        surfaces,
-        spacing=opts.spacing,
-        title=args.title,
-        lute_name=type(lute).__name__,
+        rib=args.rib_index,
+        plane_offset=args.plane_offset,
+        allowance_left=args.allowance_left,
+        allowance_right=args.allowance_right,
+        end_extension=args.end_extension,
+        spacing=args.spacing
     )
 
     if args.step_out is not None:

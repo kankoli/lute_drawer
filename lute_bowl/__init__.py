@@ -18,7 +18,6 @@ from .bowl_top_curves import (
 from .bowl_mold import MoldSection, build_mold_sections
 from .rib_form_builder import (
     RibSurfaceOptions,
-    build_extended_rib_surfaces,
     plot_lute_ribs,
 )
 
@@ -37,6 +36,5 @@ __all__ = [
     "MoldSection",
     "build_mold_sections",
     "RibSurfaceOptions",
-    "build_extended_rib_surfaces",
     "plot_lute_ribs",
 ]

@@ -26,7 +26,7 @@ class RibSurfaceOptions:
     spacing: float = 200.0
 
 
-def build_extended_rib_surfaces(
+def _build_extended_rib_surfaces(
     lute,
     *,
     top_curve=MidCurve,
@@ -91,7 +91,7 @@ def plot_lute_ribs(
         end_extension=end_extension,
         spacing=spacing,
     )
-    _, surfaces, opts = build_extended_rib_surfaces(
+    _, surfaces, opts = _build_extended_rib_surfaces(
         lute,
         top_curve=top_curve,
         n_ribs=n_ribs,
@@ -154,8 +154,8 @@ def _rib_surface_extended(
 ):
     rib1 = np.array(outline1, float)
     rib2 = np.array(outline2, float)
-    n = min(len(rib1), len(rib2))
-    rib1, rib2 = rib1[:n], rib2[:n]
+    # n = min(len(rib1), len(rib2))
+    # rib1, rib2 = rib1[:n], rib2[:n]
 
     across = _safe_unit(rib2.mean(axis=0) - rib1.mean(axis=0))
     nrm = across.copy()
@@ -226,7 +226,5 @@ def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.
 
 __all__ = [
     "RibSurfaceOptions",
-    "build_extended_rib_surfaces",
-    "plot_rib_surfaces",
     "plot_lute_ribs",
 ]
