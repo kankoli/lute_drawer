@@ -177,6 +177,25 @@ def _rib_surface_extended(
     if len(strips) < 2:
         return []
 
+    if end_extension > EPS:
+        if n > 1:
+            top_dir = (rib1[0] - rib1[1]) + (rib2[0] - rib2[1])
+        else:
+            top_dir = np.array([0.0, 0.0, 1.0])
+        top_dir = _safe_unit(top_dir)
+        first_strip = strips[0]
+        top_extension = np.asarray(first_strip + top_dir * end_extension, dtype=float)
+        strips.insert(0, top_extension)
+
+        if n > 1:
+            bot_dir = (rib1[-1] - rib1[-2]) + (rib2[-1] - rib2[-2])
+        else:
+            bot_dir = np.array([0.0, 0.0, 1.0])
+        bot_dir = _safe_unit(bot_dir)
+        last_strip = strips[-1]
+        bottom_extension = np.asarray(last_strip + bot_dir * end_extension, dtype=float)
+        strips.append(bottom_extension)
+
     quads = []
     for j in range(len(strips) - 1):
         s1, s2 = strips[j], strips[j + 1]
