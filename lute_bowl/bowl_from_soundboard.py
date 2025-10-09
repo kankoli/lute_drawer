@@ -133,6 +133,7 @@ def _spine_point_at_X(lute, X: float):
 def _select_section_positions(lute, n_sections: int , margin: float, debug: bool) -> np.ndarray:
     span = float(lute.form_bottom.x - lute.form_top.x)
     eps = margin * abs(span)
+    eps = min(eps, 0.05)
     x0 = float(lute.form_top.x) + eps
     x1 = float(lute.form_bottom.x) - eps
     xs = np.linspace(x0, x1, n_sections)
@@ -151,7 +152,15 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float], *, debug: b
     Y_apex = _spine_point_at_X(lute, Xs)
     Z_apex = float(z_top(Xs))
     if abs(Z_apex) < 1e-6:
-        return None
+        dist_bottom = abs(float(lute.form_bottom.x) - float(Xs))
+        if dist_bottom <= 1.0:
+            width = abs(float(L[1]) - float(R[1]))
+            if width > 0.0:
+                Z_apex = max(width * 0.02, 0.5)
+            else:
+                return None
+        else:
+            return None
     apex = np.array([Y_apex, Z_apex])
     C_YZ, r = circle_through_three_points_2d(
         np.array([float(L[1]), 0.0]),

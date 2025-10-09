@@ -52,7 +52,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plane-offset", type=float, default=10.0)
     parser.add_argument("--allowance-left", type=float, default=0.0)
     parser.add_argument("--allowance-right", type=float, default=0.0)
-    parser.add_argument("--end-extension", type=float, default=10.0)
+    parser.add_argument("--end-extension", type=float, default=50.0)
     parser.add_argument("--spacing", type=float, default=200.0)
     parser.add_argument("--title", default=None)
     parser.add_argument(

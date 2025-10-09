@@ -26,7 +26,7 @@ class RibSurfaceOptions:
     spacing: float = 200.0
 
 
-def _build_extended_rib_surfaces(
+def build_extended_rib_surfaces(
     lute,
     *,
     top_curve=MidCurve,
@@ -91,7 +91,7 @@ def plot_lute_ribs(
         end_extension=end_extension,
         spacing=spacing,
     )
-    _, surfaces, opts = _build_extended_rib_surfaces(
+    _, surfaces, opts = build_extended_rib_surfaces(
         lute,
         top_curve=top_curve,
         n_ribs=n_ribs,
@@ -154,8 +154,8 @@ def _rib_surface_extended(
 ):
     rib1 = np.array(outline1, float)
     rib2 = np.array(outline2, float)
-    # n = min(len(rib1), len(rib2))
-    # rib1, rib2 = rib1[:n], rib2[:n]
+    n = min(len(rib1), len(rib2))
+    rib1, rib2 = rib1[:n], rib2[:n]
 
     across = _safe_unit(rib2.mean(axis=0) - rib1.mean(axis=0))
     nrm = across.copy()
@@ -177,24 +177,53 @@ def _rib_surface_extended(
     if len(strips) < 2:
         return []
 
-    if end_extension > EPS:
-        if n > 1:
-            top_dir = (rib1[0] - rib1[1]) + (rib2[0] - rib2[1])
-        else:
-            top_dir = np.array([0.0, 0.0, 1.0])
-        top_dir = _safe_unit(top_dir)
-        first_strip = strips[0]
-        top_extension = np.asarray(first_strip + top_dir * end_extension, dtype=float)
-        strips.insert(0, top_extension)
+    if end_extension > EPS and len(strips) >= 2:
+        def _translate_strip(
+            base: np.ndarray,
+            neighbor: np.ndarray,
+            distance: float,
+        ) -> np.ndarray | None:
+            base = np.asarray(base, dtype=float)
+            neighbor = np.asarray(neighbor, dtype=float)
+            direction = base.mean(axis=0) - neighbor.mean(axis=0)
 
-        if n > 1:
-            bot_dir = (rib1[-1] - rib1[-2]) + (rib2[-1] - rib2[-2])
-        else:
-            bot_dir = np.array([0.0, 0.0, 1.0])
-        bot_dir = _safe_unit(bot_dir)
-        last_strip = strips[-1]
-        bottom_extension = np.asarray(last_strip + bot_dir * end_extension, dtype=float)
-        strips.append(bottom_extension)
+            v0, v1, v2 = base[0], base[1], base[2]
+            plane_normal = np.cross(v1 - v0, v2 - v0)
+            plane_norm = np.linalg.norm(plane_normal)
+            if plane_norm >= EPS:
+                plane_normal /= plane_norm
+                direction -= np.dot(direction, plane_normal) * plane_normal
+
+            norm = np.linalg.norm(direction)
+            if norm < EPS:
+                return None
+            offset = (direction / norm) * distance
+
+            translated = base + offset
+
+            if plane_norm >= EPS:
+                ref_point = base[0]
+                adjusted = []
+                for pt in translated:
+                    to_point = pt - ref_point
+                    distance_to_plane = np.dot(to_point, plane_normal)
+                    adjusted.append(pt - distance_to_plane * plane_normal)
+                translated = np.asarray(adjusted, dtype=float)
+            else:
+                translated = np.asarray(translated, dtype=float)
+
+            return translated
+
+        top_extension = _translate_strip(strips[0], strips[1], end_extension)
+        bottom_extension = _translate_strip(strips[-1], strips[-2], end_extension)
+
+        new_strips: list[np.ndarray] = []
+        if top_extension is not None:
+            new_strips.append(top_extension)
+        new_strips.extend(strips)
+        if bottom_extension is not None:
+            new_strips.append(bottom_extension)
+        strips = new_strips
 
     quads = []
     for j in range(len(strips) - 1):
@@ -245,5 +274,6 @@ def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.
 
 __all__ = [
     "RibSurfaceOptions",
+    "build_extended_rib_surfaces",
     "plot_lute_ribs",
 ]
