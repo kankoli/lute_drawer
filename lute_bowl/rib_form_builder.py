@@ -33,17 +33,20 @@ def build_extended_rib_surfaces(
     target_indices = [rib_index - 1]
 
     surfaces = []
+    outlines: list[tuple[int, tuple[np.ndarray, np.ndarray]]] = []
     for idx in target_indices:
         if idx < 0 or idx >= len(rib_outlines) - 1:
             raise ValueError("Rib index is outside range:", idx + 1)
-        rib1, rib2 = rib_outlines[idx], rib_outlines[idx + 1]
+        rib1 = np.asarray(rib_outlines[idx], dtype=float)
+        rib2 = np.asarray(rib_outlines[idx + 1], dtype=float)
         quads = _rib_surface_extended(
             rib1,
             rib2,
             end_extension=end_extension,
         )
         surfaces.append((idx + 1, quads))
-    return sections, surfaces
+        outlines.append((idx + 1, (rib1, rib2)))
+    return sections, surfaces, outlines
 
 
 def plot_lute_ribs(
@@ -56,7 +59,7 @@ def plot_lute_ribs(
     end_extension: float = 10.0,
     title: str | None = None,
 ):
-    _, surfaces = build_extended_rib_surfaces(
+    _, surfaces, outlines = build_extended_rib_surfaces(
         lute,
         top_curve=top_curve,
         n_ribs=n_ribs,
@@ -66,9 +69,11 @@ def plot_lute_ribs(
     )
     plot_rib_surfaces(
         surfaces,
+        outlines=outlines,
         title=title,
         lute_name=type(lute).__name__,
     )
+    return surfaces
 
 
 def _rib_surface_extended(

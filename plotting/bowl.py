@@ -266,12 +266,19 @@ def plot_mold_sections_2d(
 def plot_rib_surfaces(
     surfaces: Sequence[tuple[int, Sequence[np.ndarray]]],
     *,
+    outlines: Sequence[tuple[int, Sequence[np.ndarray]]] | None = None,
     spacing: float = 200.0,
     title: str | None = None,
     lute_name: str | None = None,
 ):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+
+    outline_map: dict[int, Sequence[np.ndarray]] = {}
+    if outlines:
+        outline_map = {idx: tuple(map(np.asarray, pair)) for idx, pair in outlines}
+
+    outline_labeled = False
 
     for rib_idx, quads in surfaces:
         offset = (rib_idx - 1) * spacing
@@ -281,6 +288,24 @@ def plot_rib_surfaces(
             poly.set_facecolor((0.3, 0.6, 0.8, 0.4))
             poly.set_edgecolor("#204060")
             ax.add_collection3d(poly)
+        if outline_map:
+            pair = outline_map.get(rib_idx)
+            if pair:
+                for outline in pair:
+                    if outline.size == 0:
+                        continue
+                    arr = np.asarray(outline, dtype=float) + np.array([0.0, offset, 0.0])
+                    label = "rib outlines" if not outline_labeled else None
+                    outline_labeled = outline_labeled or label is not None
+                    ax.plot(
+                        arr[:, 0],
+                        arr[:, 1],
+                        arr[:, 2],
+                        color="#303030",
+                        lw=1.2,
+                        ls="--",
+                        label=label,
+                    )
 
     ax.set_xlabel("X (offset by rib index)")
     ax.set_ylabel("Y (across)")
