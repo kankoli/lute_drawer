@@ -11,33 +11,16 @@ from .bowl_top_curves import MidCurve
 
 EPS = 1e-9
 
-
-# ---------------------------------------------------------------------------
-# Options & orchestrators
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class RibSurfaceOptions:
-    plane_offset: float = 10.0
-    allowance_left: float = 0.0
-    allowance_right: float = 0.0
-    end_extension: float = 10.0
-    spacing: float = 200.0
-
-
 def build_extended_rib_surfaces(
     lute,
     *,
     top_curve=MidCurve,
     n_ribs: int = 13,
     n_sections: int = 40,
-    options: RibSurfaceOptions | None = None,
+    end_extension: int = 20,
     rib_index: int | None = None,
-    draw_all: bool = False,
 ):
     """Return extended rib surfaces for the requested rib indices."""
-    opts = options or RibSurfaceOptions()
     sections, rib_outlines = build_bowl_for_lute(
         lute,
         n_ribs=n_ribs,
@@ -45,12 +28,9 @@ def build_extended_rib_surfaces(
         top_curve=top_curve,
     )
 
-    if draw_all:
-        target_indices = range(len(rib_outlines) - 1)
-    else:
-        if rib_index is None:
-            raise ValueError("rib_index must be provided unless draw_all=True")
-        target_indices = [rib_index - 1]
+    if rib_index is None:
+        raise ValueError("rib_index must be provided unless draw_all=True")
+    target_indices = [rib_index - 1]
 
     surfaces = []
     for idx in target_indices:
@@ -60,13 +40,10 @@ def build_extended_rib_surfaces(
         quads = _rib_surface_extended(
             rib1,
             rib2,
-            plane_offset=opts.plane_offset,
-            allowance_left=opts.allowance_left,
-            allowance_right=opts.allowance_right,
-            end_extension=opts.end_extension,
+            end_extension=end_extension,
         )
         surfaces.append((idx + 1, quads))
-    return sections, surfaces, opts
+    return sections, surfaces
 
 
 def plot_lute_ribs(
@@ -76,80 +53,28 @@ def plot_lute_ribs(
     n_ribs: int = 13,
     n_sections: int = 40,
     rib: int = 7,
-    draw_all: bool = False,
-    plane_offset: float = 10.0,
-    allowance_left: float = 0.0,
-    allowance_right: float = 0.0,
     end_extension: float = 10.0,
-    spacing: float = 200.0,
     title: str | None = None,
 ):
-    options = RibSurfaceOptions(
-        plane_offset=plane_offset,
-        allowance_left=allowance_left,
-        allowance_right=allowance_right,
-        end_extension=end_extension,
-        spacing=spacing,
-    )
-    _, surfaces, opts = build_extended_rib_surfaces(
+    _, surfaces = build_extended_rib_surfaces(
         lute,
         top_curve=top_curve,
         n_ribs=n_ribs,
         n_sections=n_sections,
-        options=options,
+        end_extension=end_extension,
         rib_index=rib,
-        draw_all=draw_all,
     )
     plot_rib_surfaces(
         surfaces,
-        spacing=opts.spacing,
         title=title,
         lute_name=type(lute).__name__,
     )
-
-
-# ---------------------------------------------------------------------------
-# Geometry helpers (unchanged core logic)
-# ---------------------------------------------------------------------------
-
-
-def _safe_unit(v):
-    v = np.asarray(v, dtype=float)
-    n = np.linalg.norm(v)
-    if n < EPS:
-        return np.array([1.0, 0.0, 0.0])
-    return v / n
-
-
-def _align_with_normal(vec, nrm):
-    vec = np.asarray(vec, dtype=float)
-    nrm = np.asarray(nrm, dtype=float)
-    return vec if np.dot(vec, nrm) >= 0.0 else -vec
-
-
-def _intersect_line_plane_pd(p, d, p0, nrm):
-    d = np.asarray(d, dtype=float)
-    nrm = np.asarray(nrm, dtype=float)
-    denom = float(np.dot(nrm, d))
-    if abs(denom) < EPS:
-        return None
-    t = float(np.dot(nrm, (p0 - p)) / denom)
-    return p + t * d
-
-
-def _intersect_line_plane_p1p2(p1, p2, p0, nrm):
-    p1 = np.asarray(p1, dtype=float)
-    p2 = np.asarray(p2, dtype=float)
-    return _intersect_line_plane_pd(p1, p2 - p1, p0, nrm)
 
 
 def _rib_surface_extended(
     outline1,
     outline2,
     *,
-    plane_offset: float,
-    allowance_left: float,
-    allowance_right: float,
     end_extension: float,
 ):
     rib1 = np.array(outline1, float)
@@ -157,83 +82,90 @@ def _rib_surface_extended(
     n = min(len(rib1), len(rib2))
     rib1, rib2 = rib1[:n], rib2[:n]
 
-    across = _safe_unit(rib2.mean(axis=0) - rib1.mean(axis=0))
-    nrm = across.copy()
-
-    p0_left = rib1.mean(axis=0) - (plane_offset + allowance_left) * nrm
-    p0_right = rib2.mean(axis=0) + (plane_offset + allowance_right) * nrm
-
-    strips: list[list[np.ndarray]] = []
-
-    for j in range(1, n - 1):
-        a = rib1[j]
-        b = rib2[j]
-        left_pt = _intersect_line_plane_p1p2(a, b, p0_left, nrm)
-        right_pt = _intersect_line_plane_p1p2(a, b, p0_right, nrm)
-        if left_pt is not None and right_pt is not None:
-            strips.append([left_pt, a, b, right_pt])
-
-    strips = [np.asarray(s, dtype=float) for s in strips]
-    if len(strips) < 2:
+    connectors = rib2 - rib1
+    finite_mask = (
+        np.all(np.isfinite(rib1), axis=1)
+        & np.all(np.isfinite(rib2), axis=1)
+        & np.all(np.isfinite(connectors), axis=1)
+    )
+    valid_indices = np.flatnonzero(finite_mask)
+    if valid_indices.size < 2:
         return []
 
-    if end_extension > EPS and len(strips) >= 2:
-        def _translate_strip(
-            base: np.ndarray,
-            neighbor: np.ndarray,
-            distance: float,
-        ) -> np.ndarray | None:
-            base = np.asarray(base, dtype=float)
-            neighbor = np.asarray(neighbor, dtype=float)
-            direction = base.mean(axis=0) - neighbor.mean(axis=0)
+    connector_lengths = np.linalg.norm(connectors[valid_indices], axis=1)
+    if connector_lengths.size == 0:
+        return []
+    max_span = float(np.nanmax(connector_lengths))
+    if not np.isfinite(max_span) or max_span < EPS:
+        return []
 
-            v0, v1, v2 = base[0], base[1], base[2]
-            plane_normal = np.cross(v1 - v0, v2 - v0)
-            plane_norm = np.linalg.norm(plane_normal)
-            if plane_norm >= EPS:
-                plane_normal /= plane_norm
-                direction -= np.dot(direction, plane_normal) * plane_normal
+    width = 1.5 * max_span
+    half_width = 0.5 * width
 
-            norm = np.linalg.norm(direction)
-            if norm < EPS:
-                return None
-            offset = (direction / norm) * distance
+    def _safe_unit(vec: np.ndarray, fallback: np.ndarray | None = None) -> np.ndarray:
+        vec = np.asarray(vec, dtype=float)
+        norm = float(np.linalg.norm(vec))
+        if norm < EPS:
+            if fallback is None:
+                return np.array([1.0, 0.0, 0.0], dtype=float)
+            return np.asarray(fallback, dtype=float)
+        return vec / norm
 
-            translated = base + offset
+    samples: list[tuple[float, np.ndarray, np.ndarray]] = []
+    pending: list[int] = []
+    prev_dir: np.ndarray | None = None
 
-            if plane_norm >= EPS:
-                ref_point = base[0]
-                adjusted = []
-                for pt in translated:
-                    to_point = pt - ref_point
-                    distance_to_plane = np.dot(to_point, plane_normal)
-                    adjusted.append(pt - distance_to_plane * plane_normal)
-                translated = np.asarray(adjusted, dtype=float)
-            else:
-                translated = np.asarray(translated, dtype=float)
+    def _append_sample(idx: int, direction: np.ndarray):
+        center = 0.5 * (rib1[idx] + rib2[idx])
+        samples.append((float(idx), center, direction))
 
-            return translated
+    for idx in valid_indices:
+        vec = connectors[idx]
+        norm = float(np.linalg.norm(vec))
+        if norm < EPS and prev_dir is None:
+            pending.append(int(idx))
+            continue
+        if norm >= EPS:
+            direction = vec / norm
+            if prev_dir is not None and np.dot(direction, prev_dir) < 0.0:
+                direction = -direction
+            prev_dir = direction
+        else:
+            direction = prev_dir
 
-        top_extension = _translate_strip(strips[0], strips[1], end_extension)
-        bottom_extension = _translate_strip(strips[-1], strips[-2], end_extension)
+        if direction is None:
+            continue
 
-        new_strips: list[np.ndarray] = []
-        if top_extension is not None:
-            new_strips.append(top_extension)
-        new_strips.extend(strips)
-        if bottom_extension is not None:
-            new_strips.append(bottom_extension)
-        strips = new_strips
+        for pending_idx in pending:
+            _append_sample(pending_idx, direction)
+        pending.clear()
 
-    quads = []
-    for j in range(len(strips) - 1):
-        s1, s2 = strips[j], strips[j + 1]
-        for k in range(4):
-            p1, p2 = np.array(s1[k]), np.array(s1[(k + 1) % 4])
-            q2, q1 = np.array(s2[(k + 1) % 4]), np.array(s2[k])
-            quads.append(np.array([p1, p2, q2, q1]))
+        _append_sample(int(idx), direction)
 
-    return _normalize_quads(rib1, rib2, quads)
+    if pending and prev_dir is not None:
+        for pending_idx in pending:
+            _append_sample(pending_idx, prev_dir)
+        pending.clear()
+
+    if len(samples) < 2:
+        return []
+
+    samples.sort(key=lambda entry: entry[0])
+
+    directions = [
+        _safe_unit(direction)
+        for _, _, direction in samples
+    ]
+
+    centers = [center for _, center, _ in samples]
+    left_edges = [center - half_width * direction for center, direction in zip(centers, directions)]
+    right_edges = [center + half_width * direction for center, direction in zip(centers, directions)]
+
+    quads: list[np.ndarray] = []
+    for left0, right0, left1, right1 in zip(left_edges, right_edges, left_edges[1:], right_edges[1:]):
+        quads.append(np.vstack([left0, left1, right1, right0]))
+
+    return quads
 
 
 def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.ndarray]):
@@ -273,7 +205,6 @@ def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.
 
 
 __all__ = [
-    "RibSurfaceOptions",
     "build_extended_rib_surfaces",
     "plot_lute_ribs",
 ]

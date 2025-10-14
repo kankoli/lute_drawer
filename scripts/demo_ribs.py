@@ -48,12 +48,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals")
     parser.add_argument("--sections", type=int, default=200, help="Number of sections to sample")
     parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based)")
-    parser.add_argument("--all", action="store_true", help="Plot all ribs instead of a single one")
-    parser.add_argument("--plane-offset", type=float, default=10.0)
-    parser.add_argument("--allowance-left", type=float, default=0.0)
-    parser.add_argument("--allowance-right", type=float, default=0.0)
     parser.add_argument("--end-extension", type=float, default=50.0)
-    parser.add_argument("--spacing", type=float, default=200.0)
     parser.add_argument("--title", default=None)
     parser.add_argument(
         "--step-out",
@@ -62,22 +57,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional STEP (.stp) file for exported rib solids",
     )
     parser.add_argument(
-        "--step-base-thickness",
-        type=float,
-        default=25.0,
-        help="Depth of the rectangular backing block beneath the rib (mm)",
-    )
-    parser.add_argument(
         "--step-support-extension",
         type=float,
         default=20.0,
         help="Additional distance to extend beyond the form bottom along the spine (mm)",
-    )
-    parser.add_argument(
-        "--step-spacing",
-        type=float,
-        default=None,
-        help="Optional separation between ribs in the STEP export (millimetres)",
     )
     return parser.parse_args(argv)
 
@@ -94,11 +77,7 @@ def main() -> int:
         n_ribs=args.ribs,
         n_sections=args.sections,
         rib=args.rib_index,
-        plane_offset=args.plane_offset,
-        allowance_left=args.allowance_left,
-        allowance_right=args.allowance_right,
         end_extension=args.end_extension,
-        spacing=args.spacing
     )
 
     if args.step_out is not None:
@@ -107,9 +86,7 @@ def main() -> int:
             surfaces,
             args.step_out,
             unit_scale=scale,
-            base_thickness_mm=args.step_base_thickness,
             support_extension_mm=args.step_support_extension,
-            spacing_mm=args.step_spacing,
             author="demo_ribs",
             organization="lute_drawer",
         )
