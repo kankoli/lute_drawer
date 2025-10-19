@@ -19,10 +19,12 @@ from .bowl_mold import MoldSection, build_mold_sections
 from .rib_form_builder import (
     plot_lute_ribs,
 )
+from .planar_bowl_generator import build_planar_bowl_for_lute
 
 __all__ = [
     "Section",
     "build_bowl_for_lute",
+    "build_planar_bowl_for_lute",
     "_resolve_top_curve",
     "DeepBackCurve",
     "FlatBackCurve",
