@@ -47,12 +47,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
     parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based).")
     parser.add_argument(
-        "--margin",
-        type=float,
-        default=0.0,
-        help="Optional fractional trim from both ends after applying end blocks.",
-    )
-    parser.add_argument(
         "--upper-block",
         type=float,
         default=1.0,
@@ -91,7 +85,6 @@ def main(argv: list[str] | None = None) -> int:
         top_curve=curve_cls,
         n_ribs=args.ribs,
         n_sections=args.sections,
-        margin=args.margin,
         upper_block_units=args.upper_block,
         lower_block_units=args.lower_block,
         rib=args.rib_index,
@@ -115,4 +108,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

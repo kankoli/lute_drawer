@@ -46,12 +46,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
     parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
     parser.add_argument(
-        "--margin",
-        type=float,
-        default=0.0,
-        help="Optional fractional trim from both ends after end blocks (e.g. 0.01).",
-    )
-    parser.add_argument(
         "--upper-block",
         type=float,
         default=1.0,
@@ -95,7 +89,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         lute,
         n_ribs=args.ribs,
         n_sections=args.sections,
-        margin=args.margin,
         top_curve=top_curve,
         upper_block_units=args.upper_block,
         lower_block_units=args.lower_block,
@@ -119,4 +112,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -165,7 +165,6 @@ def build_planar_bowl_for_lute(
     *,
     n_ribs: int = 13,
     n_sections: int = 200,
-    margin: float = 0.0,
     top_curve=None,
     upper_block_units: float = 1.0,
     lower_block_units: float = 0.1,
@@ -186,14 +185,6 @@ def build_planar_bowl_for_lute(
 
     if start_x >= end_x - _EPS:
         raise ValueError("End blocks overlap the bowl span; adjust block sizes.")
-
-    trimmed_span = end_x - start_x
-    if margin:
-        offset = float(margin) * abs(trimmed_span)
-        if offset * 2.0 >= trimmed_span - _EPS:
-            raise ValueError("Margin trims away the entire span between end blocks.")
-        start_x += offset
-        end_x -= offset
 
     xs = np.linspace(start_x, end_x, n_sections)
     sections: list[Section] = []
