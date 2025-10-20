@@ -20,6 +20,7 @@ from .rib_form_builder import (
     plot_lute_ribs,
 )
 from .planar_bowl_generator import build_planar_bowl_for_lute
+from .planar_rib_form_builder import build_planar_rib_surfaces, plot_planar_ribs
 
 __all__ = [
     "Section",
@@ -37,4 +38,6 @@ __all__ = [
     "MoldSection",
     "build_mold_sections",
     "plot_lute_ribs",
+    "build_planar_rib_surfaces",
+    "plot_planar_ribs",
 ]

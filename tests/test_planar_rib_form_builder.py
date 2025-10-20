@@ -1,0 +1,47 @@
+import unittest
+
+import numpy as np
+
+import lute_soundboard as lutes
+from lute_bowl.planar_rib_form_builder import build_planar_rib_surfaces
+
+
+class PlanarRibFormBuilderTests(unittest.TestCase):
+    def setUp(self):
+        self.lute = lutes.ManolLavta()
+
+    def test_planar_rib_surfaces_generate_quads(self):
+        sections, surfaces, outlines = build_planar_rib_surfaces(
+            self.lute,
+            n_ribs=4,
+            n_sections=30,
+            rib_index=2,
+        )
+
+        self.assertEqual(len(surfaces), 1)
+        rib_idx, quads = surfaces[0]
+        self.assertEqual(rib_idx, 2)
+        self.assertEqual(len(quads), len(sections) - 1)
+
+        _, (rib_a, rib_b) = outlines[0]
+        self.assertEqual(rib_a.shape, rib_b.shape)
+        self.assertEqual(rib_a.shape[0], len(sections))
+
+        for quad, p0, p1, q0, q1 in zip(
+            quads,
+            rib_a[:-1],
+            rib_a[1:],
+            rib_b[:-1],
+            rib_b[1:],
+            strict=False,
+        ):
+            self.assertEqual(quad.shape, (4, 3))
+            self.assertTrue(np.allclose(quad[0], p0))
+            self.assertTrue(np.allclose(quad[1], p1))
+            self.assertTrue(np.allclose(quad[2], q1))
+            self.assertTrue(np.allclose(quad[3], q0))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
