@@ -62,7 +62,7 @@ def _derive_planar_ribs(
     if n_ribs < 1:
         raise ValueError("n_ribs must be at least 1.")
 
-    # Reference section: choose the one with maximum radius for numerical stability.
+    # Anchor the construction using the widest section so the angular samples are stable.
     radii = [float(section.radius) for section in sections]
     ref_idx = int(np.argmax(radii))
     if radii[ref_idx] <= _EPS:
@@ -90,16 +90,20 @@ def _derive_planar_ribs(
     rib_planes: List[PlanarRib] = []
 
     for theta in thetas:
+        # Cast the reference circle point for this angular sample.
         y_ref = cy_ref + r_ref * np.cos(theta)
         z_ref = cz_ref + r_ref * np.sin(theta)
         reference_point = np.array([x_ref, y_ref, z_ref], dtype=float)
 
+        # The cross product between the spine direction and this radius defines the plane normal.
         plane_normal = np.cross(spine_vector, reference_point - spine_start)
         norm_len = np.linalg.norm(plane_normal)
         if norm_len <= _EPS:
             raise ValueError("Degenerate plane encountered while constructing rib.")
         plane_normal /= norm_len
 
+        # A second cross with the X axis gives the outbound direction within that plane,
+        # from the spine towards the rib point on the reference section.
         direction = np.cross(plane_normal, _EX)
         dir_len = np.sqrt(direction[1] ** 2 + direction[2] ** 2)
         if dir_len <= _EPS:
@@ -126,6 +130,7 @@ def _derive_planar_ribs(
             continue
 
         for plane, points in zip(rib_planes, ribs):
+            # Solve where the spine-original-rib-point line in this plane meets the section circle.
             dy, dz = float(plane.direction[1]), float(plane.direction[2])
             coeff_a = dy * dy + dz * dz
             coeff_b = 2.0 * (dy * (base_yz[0] - cy) + dz * (base_yz[1] - cz))
