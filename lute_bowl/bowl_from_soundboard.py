@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Iterable, List, NamedTuple, Sequence
 
 import numpy as np
@@ -29,6 +30,10 @@ from .bowl_top_curves import (
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
+_EX = np.array([1.0, 0.0, 0.0], dtype=float)
+_EPS = 1e-9
+
 
 class Section(NamedTuple):
     """Geometry for a single bowl slice."""
@@ -130,12 +135,27 @@ def _spine_point_at_X(lute, X: float):
     return y0 + t * (y1 - y0)
 
 
-def _select_section_positions(lute, n_sections: int , margin: float, debug: bool) -> np.ndarray:
-    span = float(lute.form_bottom.x - lute.form_top.x)
+def _spine_point_xyz(lute, x: float) -> np.ndarray:
+    """Return the (X,Y,Z) point on the spine lying on the soundboard plane."""
+    y = float(_spine_point_at_X(lute, x))
+    return np.array([float(x), y, 0.0], dtype=float)
+
+
+def _select_section_positions(lute, n_sections: int, margin: float, debug: bool) -> np.ndarray:
+    neck_point = getattr(lute, "point_neck_joint", None)
+    x_top = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
+    x_bottom = float(lute.form_bottom.x)
+    span = x_bottom - x_top
+    if span <= _EPS:
+        raise ValueError("Soundboard span collapsed; cannot sample sections.")
+
+    margin = max(0.0, float(margin))
     eps = margin * abs(span)
-    eps = min(eps, 0.05)
-    x0 = float(lute.form_top.x) + eps
-    x1 = float(lute.form_bottom.x) - eps
+    if eps * 2.0 >= span:
+        eps = 0.5 * span * (1.0 - 1e-6)
+
+    x0 = x_top + eps
+    x1 = x_bottom - eps
     xs = np.linspace(x0, x1, n_sections)
     if debug:
         print("Section X positions (excluding ends):")
@@ -192,13 +212,11 @@ def _build_sections(lute, xs: Sequence[float], z_top: Callable[[float], float], 
     return sections
 
 
-def _add_endcap_sections(lute, sections: Sequence[Section]) -> List[Section]:
-    X_ft = float(lute.form_top.x)
-    Y_ft = float(lute.form_top.y)
-    X_fb = float(lute.form_bottom.x)
-    Y_fb = float(lute.form_bottom.y)
-    start = Section(X_ft, np.array([Y_ft, 0.0]), 0.0, np.array([Y_ft, 0.0]))
-    end = Section(X_fb, np.array([Y_fb, 0.0]), 0.0, np.array([Y_fb, 0.0]))
+def _add_endcap_sections(lute, sections: Sequence[Section], x_start: float, x_end: float) -> List[Section]:
+    y_start = float(_spine_point_at_X(lute, x_start))
+    y_end = float(_spine_point_at_X(lute, x_end))
+    start = Section(x_start, np.array([y_start, 0.0]), 0.0, np.array([y_start, 0.0]))
+    end = Section(x_end, np.array([y_end, 0.0]), 0.0, np.array([y_end, 0.0]))
     return [start, *sections, end]
 
 
@@ -207,61 +225,141 @@ def _add_endcap_sections(lute, sections: Sequence[Section]) -> List[Section]:
 # ---------------------------------------------------------------------------
 
 
-def _edge_to_edge_angles(thetaL, thetaR, theta_apex, n_points):
-    def wrap(a):
-        return (a + 2 * np.pi) % (2 * np.pi)
-
-    thetaL = wrap(thetaL)
-    thetaR = wrap(thetaR)
-    theta_apex = wrap(theta_apex)
-    dLR = wrap(thetaR - thetaL)
-    t_ap = wrap(theta_apex - thetaL)
-    if t_ap <= dLR + 1e-12:
-        start, span = thetaL, dLR
-    else:
-        start, span = thetaR, wrap(thetaL - thetaR)
-    ts = np.linspace(0.0, 1.0, int(n_points))
-    return wrap(start + ts * span)
+@dataclass(frozen=True)
+class RibPlane:
+    normal: np.ndarray
+    direction: np.ndarray
 
 
-def _build_ribs(sections: Sequence[Section], n_ribs: int) -> List[np.ndarray]:
+def _section_angles(section: Section) -> tuple[float, float, float]:
+    _, center, radius, apex = section
+    r = float(radius)
+    if r <= _EPS:
+        raise ValueError("Section radius must be positive to derive angles.")
+
+    cy, cz = map(float, center)
+    ay, az = map(float, apex)
+
+    s = -cz / r
+    if abs(s) > 1.0:
+        raise ValueError("Section apex is incompatible with fitted circle.")
+
+    theta_z = float(np.arcsin(s))
+    candidates = [theta_z, np.pi - theta_z]
+    y_candidates = [cy + r * np.cos(theta) for theta in candidates]
+    order = np.argsort(y_candidates)
+    theta_left = candidates[int(order[0])]
+    theta_right = candidates[int(order[1])]
+    theta_apex = float(np.arctan2(az - cz, ay - cy))
+    return theta_left, theta_right, theta_apex
+
+
+def _derive_planar_ribs(
+    lute,
+    sections: Sequence[Section],
+    n_ribs: int,
+    x_start: float,
+    x_end: float,
+) -> List[np.ndarray]:
+    """Return rib polylines that lie in fixed planes to avoid twist."""
+    if n_ribs < 1:
+        raise ValueError("n_ribs must be at least 1.")
+
     rib_count = int(n_ribs) + 1
     if rib_count < 2:
         rib_count = 2
 
-    per_section_data = []
-    for sec in sections:
-        X, (C_Y, C_Z), r, apex = sec
-        if r <= 0:
-            per_section_data.append((X, None, None, None, None, None, None))
-            continue
-        Y_apex, Z_apex = float(apex[0]), float(apex[1])
-        s = -C_Z / r
-        if abs(s) > 1:
-            per_section_data.append((X, None, None, None, None, None, None))
-            continue
-        theta_z = np.arcsin(s)
-        cand = [theta_z, np.pi - theta_z]
-        Ycands = [C_Y + r * np.cos(th) for th in cand]
-        idx = np.argsort(Ycands)
-        thetaL = float(cand[idx[0]])
-        thetaR = float(cand[idx[1]])
-        theta_apex = float(np.arctan2(Z_apex - C_Z, Y_apex - C_Y))
-        per_section_data.append((X, C_Y, C_Z, r, thetaL, thetaR, theta_apex))
+    radii = [float(section.radius) for section in sections]
+    ref_idx = int(np.argmax(radii))
+    if radii[ref_idx] <= _EPS:
+        raise ValueError("Unable to locate a section with positive radius.")
 
-    ribs = [[] for _ in range(rib_count)]
-    for X, C_Y, C_Z, r, thetaL, thetaR, theta_apex in per_section_data:
-        if r is None or r <= 0:
-            for rib in ribs:
-                rib.append((float(X), np.nan, np.nan))
-            continue
-        thetas = _edge_to_edge_angles(thetaL, thetaR, theta_apex, rib_count)
-        Y = C_Y + r * np.cos(thetas)
-        Z = C_Z + r * np.sin(thetas)
-        for i in range(rib_count):
-            ribs[i].append((float(X), float(Y[i]), float(Z[i])))
+    ref_section = sections[ref_idx]
+    theta_left, theta_right, _ = _section_angles(ref_section)
+    thetas = np.linspace(theta_left, theta_right, rib_count)
 
-    return [np.asarray(rib, dtype=float) for rib in ribs]
+    x_ref = float(ref_section.x)
+    cy_ref, cz_ref = map(float, ref_section.center)
+    r_ref = float(ref_section.radius)
+    spine_ref = _spine_point_xyz(lute, x_ref)
+
+    spine_start = _spine_point_xyz(lute, x_start)
+    spine_end = _spine_point_xyz(lute, x_end)
+    spine_vector = spine_end - spine_start
+    if np.linalg.norm(spine_vector) <= _EPS:
+        raise ValueError("Spine vector collapsed after applying end blocks.")
+
+    rib_planes: List[RibPlane] = []
+    ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
+
+    for theta in thetas:
+        y_ref = cy_ref + r_ref * np.cos(theta)
+        z_ref = cz_ref + r_ref * np.sin(theta)
+        reference_point = np.array([x_ref, y_ref, z_ref], dtype=float)
+
+        plane_normal = np.cross(spine_vector, reference_point - spine_start)
+        norm_len = np.linalg.norm(plane_normal)
+        if norm_len <= _EPS:
+            raise ValueError("Degenerate plane encountered while constructing rib.")
+        plane_normal /= norm_len
+
+        direction = np.cross(plane_normal, _EX)
+        dir_len = np.sqrt(direction[1] ** 2 + direction[2] ** 2)
+        if dir_len <= _EPS:
+            raise ValueError("Failed to derive planar direction for rib.")
+
+        delta_ref = reference_point - spine_ref
+        s_ref = (delta_ref[1] * direction[1] + delta_ref[2] * direction[2]) / (dir_len**2)
+        if s_ref < 0.0:
+            plane_normal = -plane_normal
+            direction = -direction
+
+        rib_planes.append(RibPlane(plane_normal, direction))
+
+    for section in sections:
+        x = float(section.x)
+        cy, cz = map(float, section.center)
+        r = float(section.radius)
+        spine_y = float(_spine_point_at_X(lute, x))
+        base_yz = np.array([spine_y, 0.0], dtype=float)
+
+        if r <= _EPS:
+            for trace in ribs:
+                trace.append(np.array([x, base_yz[0], base_yz[1]], dtype=float))
+            continue
+
+        for plane, trace in zip(rib_planes, ribs):
+            dy, dz = float(plane.direction[1]), float(plane.direction[2])
+            coeff_a = dy * dy + dz * dz
+            coeff_b = 2.0 * (dy * (base_yz[0] - cy) + dz * (base_yz[1] - cz))
+            coeff_c = (base_yz[0] - cy) ** 2 + (base_yz[1] - cz) ** 2 - r * r
+            discriminant = coeff_b * coeff_b - 4.0 * coeff_a * coeff_c
+
+            if discriminant < -1e-7:
+                raise RuntimeError(f"Planar rib plane misses section circle at X={x:.6f}")
+
+            discriminant = max(0.0, discriminant)
+            sqrt_disc = np.sqrt(discriminant)
+
+            s_candidates = [
+                (-coeff_b - sqrt_disc) / (2.0 * coeff_a),
+                (-coeff_b + sqrt_disc) / (2.0 * coeff_a),
+            ]
+            s_valid = [s for s in s_candidates if s >= -1e-9]
+            if not s_valid:
+                s = max(s_candidates, key=lambda val: val)
+                if s < 0.0:
+                    s = 0.0
+            else:
+                s = max(s_valid)
+                if s < 0.0:
+                    s = 0.0
+
+            y = base_yz[0] + s * dy
+            z = base_yz[1] + s * dz
+            trace.append(np.array([x, y, z], dtype=float))
+
+    return [np.asarray(trace, dtype=float) for trace in ribs]
 
 
 def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callable[[float], float]:
@@ -409,7 +507,7 @@ def build_bowl_for_lute(
     lute,
     n_ribs: int = 13,
     n_sections: int = 200,
-    margin: float = 1e-3,
+    margin: float = 0.0,
     debug: bool = False,
     top_curve=None,
 ):
@@ -417,10 +515,24 @@ def build_bowl_for_lute(
     z_top = _resolve_top_curve(lute, top_curve)
 
     xs = _select_section_positions(lute, n_sections, margin, debug)
-    sections = _build_sections(lute, xs, z_top, debug=debug)
-    sections = _add_endcap_sections(lute, sections)
 
-    ribs = _build_ribs(sections, n_ribs) if sections else []
+    neck_point = getattr(lute, "point_neck_joint", None)
+    x_start = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
+    x_end = float(lute.form_bottom.x)
+
+    interior_xs = xs[1:-1] if len(xs) > 2 else []
+    sections = _build_sections(lute, interior_xs, z_top, debug=debug)
+    sections = _add_endcap_sections(lute, sections, x_start, x_end)
+
+    ribs: List[np.ndarray] = []
+    if sections:
+        ribs = _derive_planar_ribs(
+            lute,
+            sections,
+            n_ribs,
+            x_start,
+            x_end,
+        )
     if ribs:
         X_ft = float(lute.form_top.x)
         Y_ft = float(lute.form_top.y)

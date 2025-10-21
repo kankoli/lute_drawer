@@ -49,14 +49,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--upper-block",
         type=float,
-        default=1.0,
-        help="Upper end-block height expressed in geometry units.",
+        default=0.0,
+        help="Extra clearance past the neck joint in geometry units (default: 0).",
     )
     parser.add_argument(
         "--lower-block",
         type=float,
-        default=0.1,
-        help="Lower end-block height expressed in geometry units.",
+        default=0.0,
+        help="Extra clearance above the tail block in geometry units (default: 0).",
     )
     parser.add_argument("--title", default=None)
     parser.add_argument(

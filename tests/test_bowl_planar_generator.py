@@ -36,15 +36,15 @@ class PlanarBowlGeneratorTests(unittest.TestCase):
             self.lute,
             n_ribs=6,
             n_sections=40,
-            upper_block_units=1.0,
-            lower_block_units=0.1,
+            upper_block_units=0.0,
+            lower_block_units=0.0,
         )
 
         self.assertEqual(len(ribs), 7)
         self.assertEqual(len(sections), 40)
 
-        start_expected = float(self.lute.form_top.x) + self.unit * 1.0
-        end_expected = float(self.lute.form_bottom.x) - self.unit * 0.1
+        start_expected = float(self.lute.point_neck_joint.x)
+        end_expected = float(self.lute.form_bottom.x)
 
         self.assertTrue(
             abs(float(sections[0].x) - start_expected) < 1e-6,

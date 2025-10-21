@@ -15,6 +15,7 @@ from lute_bowl.bowl_mold import build_mold_sections
 from plotting.step_renderers import write_mold_sections_step
 from plotting import plot_bowl, plot_mold_sections_2d
 from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
 from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, FlatBackCurve
 
 
@@ -31,7 +32,7 @@ def _resolve_class(path: str):
 
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "lute_bowl.bowl_top_curves.MidCurve"
+DEFAULT_CURVE = "lute_bowl.bowl_top_curves.FlatBackCurve"
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +51,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals")
     parser.add_argument("--sections", type=int, default=120, help="Number of sections to sample")
+    parser.add_argument(
+        "--use-planar",
+        action="store_true",
+        help="Sample the bowl with the planar generator (includes end-block trimming).",
+    )
+    parser.add_argument(
+        "--upper-block",
+        type=float,
+        default=0.0,
+        help="Extra clearance past the neck joint in geometry units (planar generator).",
+    )
+    parser.add_argument(
+        "--lower-block",
+        type=float,
+        default=0.0,
+        help="Extra clearance above the tail block in geometry units (planar generator).",
+    )
 
     parser.add_argument("--skip-mold-sections", action="store_true", help="Skip plotting mold sections")
 
@@ -92,12 +110,22 @@ def main() -> int:
     curve_cls = _resolve_class(args.curve)
     lute = lute_cls()
 
-    sections, ribs = build_bowl_for_lute(
-        lute,
-        n_ribs=args.ribs,
-        n_sections=args.sections,
-        top_curve=curve_cls,
-    )
+    if args.use_planar:
+        sections, ribs = build_planar_bowl_for_lute(
+            lute,
+            n_ribs=args.ribs,
+            n_sections=args.sections,
+            top_curve=curve_cls,
+            upper_block_units=args.upper_block,
+            lower_block_units=args.lower_block,
+        )
+    else:
+        sections, ribs = build_bowl_for_lute(
+            lute,
+            n_ribs=args.ribs,
+            n_sections=args.sections,
+            top_curve=curve_cls,
+        )
 
     if not args.skip_mold_sections:
         mold_sections = build_mold_sections(
