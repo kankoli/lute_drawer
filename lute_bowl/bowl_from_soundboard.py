@@ -26,6 +26,8 @@ from .bowl_top_curves import (
     SimpleAmplitudeCurve,
     TopCurve,
     resolve_top_curve,
+    resolve_amplitude,
+    resolve_widths,
 )
 
 # ---------------------------------------------------------------------------
@@ -441,8 +443,10 @@ def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callab
 
     gammas = {k: params.gammas[k] for k in params.gammas if k in ctrl_x_all}
     if not gammas:
+        amplitude = resolve_amplitude(lute, params)
+
         def z_top_lin(x):
-            return float(_resolve_amplitude(lute, params) * np.interp(float(x), xs, N, left=0.0, right=0.0))
+            return float(amplitude * np.interp(float(x), xs, N, left=0.0, right=0.0))
 
         return z_top_lin
 
@@ -452,7 +456,7 @@ def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callab
     xc = xc[order]
     gc = gc[order]
 
-    widths = _resolve_widths(lute, params)
+    widths = resolve_widths(lute, params)
     sig = []
     for idx, key in enumerate(np.array(list(gammas.keys()))[order]):
         width = widths.get(key)
@@ -486,32 +490,12 @@ def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callab
         E = 1.0 + gate * (E - 1.0)
 
     N_shaped = N ** E
-    amplitude = _resolve_amplitude(lute, params)
+    amplitude = resolve_amplitude(lute, params)
 
     def z_top(x):
         return float(amplitude * np.interp(float(x), xs, N_shaped, left=0.0, right=0.0))
 
     return z_top
-
-
-def _resolve_widths(lute, params: SideProfileParameters) -> dict[str, float]:
-    widths: dict[str, float] = {}
-    if not params.widths:
-        return widths
-    span = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
-    for key, value in params.widths.items():
-        if isinstance(value, (int, float)):
-            widths[key] = float(value)
-        elif isinstance(value, (tuple, list)) and len(value) == 2 and value[0] == "span_frac":
-            widths[key] = float(value[1]) * span
-    return widths
-
-
-def _resolve_amplitude(lute, params: SideProfileParameters) -> float:
-    u = float(getattr(lute, "unit", 1.0))
-    if params.amplitude_mode == "units" and params.amplitude_units is not None:
-        return float(params.amplitude_units) * u
-    return float(max(params.gammas.values()) if params.gammas else 1.0) * u
 
 
 # ---------------------------------------------------------------------------

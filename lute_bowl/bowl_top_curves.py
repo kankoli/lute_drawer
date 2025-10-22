@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class SideProfileParameters:
@@ -129,6 +131,26 @@ def resolve_top_curve(
     except Exception:
         pass
     return SideProfilePerControlTopCurve.build(lute, builder)
+
+
+def resolve_widths(lute, params: SideProfileParameters) -> dict[str, float]:
+    widths: dict[str, float] = {}
+    if not params.widths:
+        return widths
+    span = abs(float(lute.form_bottom.x) - float(lute.form_top.x))
+    for key, value in params.widths.items():
+        if isinstance(value, (int, float)):
+            widths[key] = float(value)
+        elif isinstance(value, (tuple, list)) and len(value) == 2 and value[0] == "span_frac":
+            widths[key] = float(value[1]) * span
+    return widths
+
+
+def resolve_amplitude(lute, params: SideProfileParameters) -> float:
+    u = float(getattr(lute, "unit", 1.0))
+    if params.amplitude_mode == "units" and params.amplitude_units is not None:
+        return float(params.amplitude_units) * u
+    return float(max(params.gammas.values()) if params.gammas else 1.0) * u
 
 
 __all__ = [
