@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import lute_bowl.planar_bowl_generator as planar_bowl
-from lute_bowl.planar_rib_form_builder import build_rib_surfaces
+from lute_bowl.rib_form_builder import build_rib_surfaces
 from plotting.bowl import plot_rib_surfaces
 from plotting.step_renderers import write_rib_surfaces_step
 

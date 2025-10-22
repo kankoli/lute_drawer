@@ -16,7 +16,7 @@ from .top_curves import (
 )
 from .bowl_mold import MoldSection, build_mold_sections
 from .planar_bowl_generator import build_planar_bowl_for_lute
-from .planar_rib_form_builder import build_rib_surfaces
+from .rib_form_builder import build_rib_surfaces
 
 __all__ = [
     "Section",

@@ -31,7 +31,7 @@ sys.modules.setdefault("plotting.step_renderers", plotting_step_stub)
 
 import lute_soundboard as lutes
 from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
-from lute_bowl.planar_rib_form_builder import build_rib_surfaces
+from lute_bowl.rib_form_builder import build_rib_surfaces
 
 
 class PlanarRibFormBuilderTests(unittest.TestCase):
