@@ -1,4 +1,4 @@
-"""Planar rib bowl generator with configurable end blocks."""
+"""Helpers for sampling planar ribs and bowl sections."""
 from __future__ import annotations
 
 from typing import List
@@ -16,7 +16,7 @@ from .top_curves import SimpleAmplitudeCurve, TopCurve
 _EPS = 1e-9
 
 
-def build_planar_bowl_for_lute(
+def build_bowl_ribs(
     lute,
     *,
     n_ribs: int = 13,
@@ -26,7 +26,7 @@ def build_planar_bowl_for_lute(
     lower_block_units: float = 0.0,
     debug: bool = False,
 ) -> tuple[list[Section], List[np.ndarray]]:
-    """Build a bowl with planar ribs bounded by end blocks."""
+    """Return sampled sections and rib polylines between the end blocks."""
     if n_sections < 2:
         raise ValueError("n_sections must be at least 2.")
 
@@ -69,4 +69,4 @@ def build_planar_bowl_for_lute(
     return sections, ribs
 
 
-__all__ = ["build_planar_bowl_for_lute"]
+__all__ = ["build_bowl_ribs"]

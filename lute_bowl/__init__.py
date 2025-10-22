@@ -15,12 +15,12 @@ from .top_curves import (
     resolve_amplitude,
 )
 from .mold_builder import MoldSection, build_mold_sections
-from .planar_bowl_generator import build_planar_bowl_for_lute
+from .rib_builder import build_bowl_ribs
 from .rib_form_builder import build_rib_surfaces
 
 __all__ = [
     "Section",
-    "build_planar_bowl_for_lute",
+    "build_bowl_ribs",
     "DeepBackCurve",
     "FlatBackCurve",
     "MidCurve",

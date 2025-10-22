@@ -16,7 +16,7 @@ sys.modules.setdefault("matplotlib", matplotlib_stub)
 sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lute_soundboard as lutes
-from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
+from lute_bowl.rib_builder import build_bowl_ribs
 
 
 def _max_plane_distance(points: np.ndarray) -> float:
@@ -45,7 +45,7 @@ class PlanarBowlGeneratorTests(unittest.TestCase):
         self.unit = float(self.lute.unit)
 
     def test_planar_ribs_respect_bounds(self):
-        sections, ribs = build_planar_bowl_for_lute(
+        sections, ribs = build_bowl_ribs(
             self.lute,
             n_ribs=6,
             n_sections=40,

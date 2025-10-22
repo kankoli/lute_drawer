@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
+from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.mold_builder import build_mold_sections
 from lute_bowl.top_curves import TopCurve
 from plotting import plot_bowl, plot_mold_sections_2d
@@ -134,7 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if top_curve_cls is None or not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve):
         raise TypeError("--top-curve must reference a TopCurve subclass")
 
-    sections, ribs = build_planar_bowl_for_lute(
+    sections, ribs = build_bowl_ribs(
         lute,
         n_ribs=args.ribs,
         n_sections=args.sections,

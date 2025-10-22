@@ -18,7 +18,7 @@ sys.modules.setdefault("matplotlib", matplotlib_stub)
 sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lute_soundboard as lutes
-from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
+from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.top_curves import SimpleAmplitudeCurve, TopCurve
 
 plotting_stub = types.ModuleType("plotting")
@@ -56,7 +56,7 @@ class PlanarBowlGeneratorTests(unittest.TestCase):
         lute = self._make_lute()
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            sections, rib_outlines = build_planar_bowl_for_lute(lute, n_ribs=4, n_sections=8, top_curve=ConstantCurve)
+            sections, rib_outlines = build_bowl_ribs(lute, n_ribs=4, n_sections=8, top_curve=ConstantCurve)
 
         self.assertEqual(len(rib_outlines), 5)  # n+1 outlines for n ribs
         self.assertEqual(len(sections), 8)
@@ -88,14 +88,14 @@ class PlanarBowlGeneratorTests(unittest.TestCase):
 
         lute = self._make_lute()
         with self.assertRaises(ValueError):
-            build_planar_bowl_for_lute(lute, n_ribs=0, n_sections=5, top_curve=ConstantCurve)
+            build_bowl_ribs(lute, n_ribs=0, n_sections=5, top_curve=ConstantCurve)
 
     @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_without_soundhole(self, mock_draw):
         lute = lutes.BaltaSaz()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            sections, ribs = build_planar_bowl_for_lute(lute, n_ribs=4, n_sections=6, top_curve=SimpleAmplitudeCurve)
+            sections, ribs = build_bowl_ribs(lute, n_ribs=4, n_sections=6, top_curve=SimpleAmplitudeCurve)
 
         self.assertEqual(len(ribs), 5)
         self.assertGreater(len(sections), 2)

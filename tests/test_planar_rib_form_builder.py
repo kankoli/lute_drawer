@@ -30,7 +30,7 @@ sys.modules.setdefault("plotting.bowl", plotting_bowl_stub)
 sys.modules.setdefault("plotting.step_renderers", plotting_step_stub)
 
 import lute_soundboard as lutes
-from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
+from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.rib_form_builder import build_rib_surfaces
 
 
@@ -39,7 +39,7 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
         self.lute = lutes.ManolLavta()
 
     def test_planar_rib_surfaces_generate_quads(self):
-        sections, rib_outlines = build_planar_bowl_for_lute(
+        sections, rib_outlines = build_bowl_ribs(
             self.lute,
             n_ribs=4,
             n_sections=30,
