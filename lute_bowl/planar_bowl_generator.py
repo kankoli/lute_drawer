@@ -11,7 +11,7 @@ from .bowl_from_soundboard import (
     _derive_planar_ribs,
     _sample_section,
 )
-from .bowl_top_curves import SimpleAmplitudeCurve, TopCurve
+from .top_curves import SimpleAmplitudeCurve, TopCurve
 
 _EPS = 1e-9
 

@@ -16,7 +16,7 @@ from plotting.step_renderers import write_mold_sections_step
 from plotting import plot_bowl, plot_mold_sections_2d
 from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
 from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
-from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, FlatBackCurve
+from lute_bowl.top_curves import SimpleAmplitudeCurve, FlatBackCurve
 
 
 def _resolve_class(path: str):
@@ -32,7 +32,7 @@ def _resolve_class(path: str):
 
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "lute_bowl.bowl_top_curves.FlatBackCurve"
+DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
 
 
 def parse_args() -> argparse.Namespace:

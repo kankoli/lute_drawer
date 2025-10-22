@@ -5,7 +5,7 @@ from typing import Iterable, List, Sequence
 import numpy as np
 
 from .planar_bowl_generator import build_planar_bowl_for_lute
-from .bowl_top_curves import MidCurve
+from .top_curves import MidCurve
 from plotting.bowl import plot_rib_surfaces
 
 

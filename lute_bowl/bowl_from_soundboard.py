@@ -17,7 +17,7 @@ from typing import Callable, Iterable, List, NamedTuple, Sequence
 import numpy as np
 import warnings
 
-from .bowl_top_curves import (
+from .top_curves import (
     DeepBackCurve,
     FlatBackCurve,
     MidCurve,

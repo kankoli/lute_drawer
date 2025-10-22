@@ -15,7 +15,7 @@ from lute_bowl.planar_rib_form_builder import plot_planar_ribs
 from plotting.step_renderers import write_rib_surfaces_step
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "lute_bowl.bowl_top_curves.MidCurve"
+DEFAULT_CURVE = "lute_bowl.top_curves.MidCurve"
 
 
 def _resolve_class(path: str):

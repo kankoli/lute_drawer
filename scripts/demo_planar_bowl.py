@@ -16,7 +16,7 @@ from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
 from plotting import plot_bowl
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
-DEFAULT_CURVE = "lute_bowl.bowl_top_curves.FlatBackCurve"
+DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
 
 
 def _resolve_class(path: str):

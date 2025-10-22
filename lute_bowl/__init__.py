@@ -4,7 +4,7 @@ from .bowl_from_soundboard import (
     Section,
     build_bowl_for_lute,
 )
-from .bowl_top_curves import (
+from .top_curves import (
     DeepBackCurve,
     FlatBackCurve,
     MidCurve,

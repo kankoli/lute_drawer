@@ -19,7 +19,7 @@ sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lute_soundboard as lutes
 from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
-from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, TopCurve
+from lute_bowl.top_curves import SimpleAmplitudeCurve, TopCurve
 
 plotting_stub = types.ModuleType("plotting")
 svg_stub = types.ModuleType("plotting.svg")
