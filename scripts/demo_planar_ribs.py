@@ -11,7 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from lute_bowl.planar_rib_form_builder import plot_planar_ribs
+from lute_bowl.planar_rib_form_builder import build_planar_rib_surfaces
+from plotting.bowl import plot_rib_surfaces
 from plotting.step_renderers import write_rib_surfaces_step
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
@@ -80,15 +81,21 @@ def main(argv: list[str] | None = None) -> int:
     curve_cls = _resolve_class(args.curve)
     lute = lute_cls()
 
-    surfaces = plot_planar_ribs(
+    _, surfaces, outlines = build_planar_rib_surfaces(
         lute,
         top_curve=curve_cls,
         n_ribs=args.ribs,
         n_sections=args.sections,
         upper_block_units=args.upper_block,
         lower_block_units=args.lower_block,
-        rib=args.rib_index,
+        rib_index=args.rib_index,
+    )
+
+    plot_rib_surfaces(
+        surfaces,
+        outlines=outlines,
         title=args.title,
+        lute_name=type(lute).__name__,
     )
 
     if args.step_out is not None:

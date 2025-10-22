@@ -6,7 +6,6 @@ import numpy as np
 
 from .planar_bowl_generator import build_planar_bowl_for_lute
 from .top_curves import MidCurve
-from plotting.bowl import plot_rib_surfaces
 
 
 def build_planar_rib_surfaces(
@@ -50,35 +49,6 @@ def build_planar_rib_surfaces(
         outlines.append((idx + 1, (rib_a, rib_b)))
 
     return sections, surfaces, outlines
-
-
-def plot_planar_ribs(
-    lute,
-    *,
-    top_curve=MidCurve,
-    n_ribs: int = 13,
-    n_sections: int = 160,
-    upper_block_units: float = 1.0,
-    lower_block_units: float = 0.1,
-    rib: int = 7,
-    title: str | None = None,
-):
-    _, surfaces, outlines = build_planar_rib_surfaces(
-        lute,
-        top_curve=top_curve,
-        n_ribs=n_ribs,
-        n_sections=n_sections,
-        upper_block_units=upper_block_units,
-        lower_block_units=lower_block_units,
-        rib_index=rib,
-    )
-    plot_rib_surfaces(
-        surfaces,
-        outlines=outlines,
-        title=title,
-        lute_name=type(lute).__name__,
-    )
-    return surfaces
 
 
 def _validate_planar_pair(rib_a: np.ndarray, rib_b: np.ndarray) -> None:
@@ -139,5 +109,4 @@ def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.
 
 __all__ = [
     "build_planar_rib_surfaces",
-    "plot_planar_ribs",
 ]
