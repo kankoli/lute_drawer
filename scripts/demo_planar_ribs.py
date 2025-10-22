@@ -83,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     curve_cls = _resolve_class(args.curve)
     if not isinstance(curve_cls, type) or not issubclass(curve_cls, TopCurve):
         raise TypeError("curve must reference a TopCurve subclass")
+
     lute = lute_cls()
 
     sections, rib_outlines = rib_builder.build_bowl_ribs(
