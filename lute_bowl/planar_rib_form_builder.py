@@ -4,34 +4,21 @@ from typing import Iterable, List, Sequence
 
 import numpy as np
 
-from .planar_bowl_generator import build_planar_bowl_for_lute
-from .top_curves import MidCurve
 
-
-def build_planar_rib_surfaces(
-    lute,
+def build_rib_surfaces(
     *,
-    top_curve=MidCurve,
-    n_ribs: int = 13,
-    n_sections: int = 160,
-    upper_block_units: float = 1.0,
-    lower_block_units: float = 0.1,
+    rib_outlines: Sequence[np.ndarray],
     rib_index: int | Sequence[int] | None = None,
-) -> tuple[list[object], list[tuple[int, list[np.ndarray]]], list[tuple[int, tuple[np.ndarray, np.ndarray]]]]:
-    """Return rib surfaces built from planar rib outlines."""
-    sections, rib_outlines = build_planar_bowl_for_lute(
-        lute,
-        n_ribs=n_ribs,
-        n_sections=n_sections,
-        top_curve=top_curve,
-        upper_block_units=upper_block_units,
-        lower_block_units=lower_block_units,
-    )
+) -> tuple[list[tuple[int, list[np.ndarray]]], list[tuple[int, tuple[np.ndarray, np.ndarray]]]]:
+    """Return rib surfaces from precomputed planar rib outlines."""
+
+    if len(rib_outlines) < 2:
+        raise ValueError("At least two rib outlines are required to build surfaces.")
 
     if rib_index is None:
         indices = list(range(len(rib_outlines) - 1))
     elif isinstance(rib_index, Iterable) and not isinstance(rib_index, (str, bytes)):
-        indices = [idx - 1 for idx in rib_index]
+        indices = [int(idx) - 1 for idx in rib_index]
     else:
         indices = [int(rib_index) - 1]
 
@@ -48,7 +35,7 @@ def build_planar_rib_surfaces(
         surfaces.append((idx + 1, quads))
         outlines.append((idx + 1, (rib_a, rib_b)))
 
-    return sections, surfaces, outlines
+    return surfaces, outlines
 
 
 def _validate_planar_pair(rib_a: np.ndarray, rib_b: np.ndarray) -> None:
@@ -108,5 +95,5 @@ def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.
 
 
 __all__ = [
-    "build_planar_rib_surfaces",
+    "build_rib_surfaces",
 ]
