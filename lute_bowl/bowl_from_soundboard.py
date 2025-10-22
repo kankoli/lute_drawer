@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Callable, Iterable, List, NamedTuple, Sequence
 
 import numpy as np
@@ -71,59 +72,93 @@ def circle_through_three_points_2d(P1, P2, P3):
     return C, r
 
 
-def _sample_soundboard_outline(lute, samples_per_arc):
-    pts = []
-    for arc in getattr(lute, "final_arcs", []):
-        pts.append(arc.sample_points(samples_per_arc))
-    for arc in getattr(lute, "final_reflected_arcs", []):
-        pts.append(arc.sample_points(samples_per_arc))
-    if not pts:
-        return np.empty((0, 2))
-    return np.vstack(pts)
+def _normalize_angle_deg(value: float) -> float:
+    """Wrap angles to [-180, 180] degrees."""
+    while value <= -180.0:
+        value += 360.0
+    while value > 180.0:
+        value -= 360.0
+    return value
 
 
-def _intersections_with_vertical(outline_xy, x_const, tol=1e-9):
-    ys, P = [], outline_xy
-    for i in range(len(P) - 1):
-        x0, y0 = P[i]
-        x1, y1 = P[i + 1]
-        dx0, dx1 = x0 - x_const, x1 - x_const
-        if dx0 == 0 and dx1 == 0:
-            ys.extend([y0, y1])
-            continue
-        if (dx0 == 0) ^ (dx1 == 0):
-            ys.append(y0 if dx0 == 0 else y1)
-            continue
-        if (dx0 < 0 and dx1 > 0) or (dx0 > 0 and dx1 < 0):
-            t = (x_const - x0) / (x1 - x0)
-            ys.append(y0 + t * (y1 - y0))
-    ys = sorted(ys)
-    dedup = []
-    for y in ys:
-        if not dedup or abs(y - dedup[-1]) > tol:
-            dedup.append(y)
-    return dedup
+def _angle_on_arc(arc, x: float, y: float) -> float:
+    cx = float(arc.center.x)
+    cy = float(arc.center.y)
+    angle = math.degrees(math.atan2(y - cy, x - cx))
+    return _normalize_angle_deg(angle)
+
+
+def _point_within_arc(arc, x: float, y: float, tol: float = 1e-7) -> bool:
+    angle1 = float(arc.angle1)
+    angle2 = float(arc.angle2)
+    target = _angle_on_arc(arc, x, y)
+    delta = _normalize_angle_deg(angle2 - angle1)
+    diff = _normalize_angle_deg(target - angle1)
+    if delta >= 0:
+        return -tol <= diff <= delta + tol
+    return delta - tol <= diff <= tol
+
+
+def _arc_intersections_with_vertical(arc, x: float, tol: float = 1e-9) -> List[np.ndarray]:
+    cx = float(arc.center.x)
+    cy = float(arc.center.y)
+    r = float(arc.radius)
+    dx = x - cx
+    if abs(dx) > r + tol:
+        return []
+    inside = r * r - dx * dx
+    if inside < 0:
+        if inside < -1e-6:
+            return []
+        inside = 0.0
+    root = math.sqrt(inside)
+    candidates = [cy + root, cy - root] if root > tol else [cy]
+    points: List[np.ndarray] = []
+    for y in candidates:
+        if _point_within_arc(arc, x, y):
+            points.append(np.array([x, y], dtype=float))
+    return points
 
 
 def _extract_side_points_at_X(lute, X, *, debug=False, min_width=1e-3, samples_per_arc=500):
-    if abs(float(X) - float(lute.form_top.x)) < 1e-12 or abs(float(X) - float(lute.form_bottom.x)) < 1e-12:
-        return None
-    outline = _sample_soundboard_outline(lute, samples_per_arc=samples_per_arc)
-    ys = _intersections_with_vertical(outline, float(X))
-    if len(ys) >= 2:
-        yL, yR = ys[0], ys[-1]
+    x_val = float(X)
+    arcs = list(getattr(lute, "final_arcs", [])) + list(getattr(lute, "final_reflected_arcs", []))
+    if not arcs:
+        raise RuntimeError("Soundboard has no final arcs to intersect.")
+
+    intersections: List[np.ndarray] = []
+    for arc in arcs:
+        intersections.extend(_arc_intersections_with_vertical(arc, x_val))
+
+    if not intersections:
+        raise RuntimeError(f"Could not find intersections at X={x_val:.4f}")
+
+    intersections.sort(key=lambda pt: pt[1])
+    dedup: List[np.ndarray] = []
+    for pt in intersections:
+        if not dedup or abs(pt[1] - dedup[-1][1]) > 1e-7:
+            dedup.append(pt)
+
+    if len(dedup) >= 2:
+        yL = dedup[0][1]
+        yR = dedup[-1][1]
         if abs(yR - yL) >= min_width:
-            return (np.array([float(X), yL]), np.array([float(X), yR]), float(X))
+            return (np.array([x_val, yL]), np.array([x_val, yR]), x_val)
+
     if debug:
+        import matplotlib.pyplot as plt
+
         fig, ax = plt.subplots(figsize=(8, 6))
-        if outline.size:
-            ax.plot(outline[:, 0], outline[:, 1], color="0.4", lw=1.0)
-        ax.axvline(float(X), color="r", ls="--")
-        for y in ys:
-            ax.plot(float(X), y, "ro")
+        for arc in arcs:
+            pts = arc.sample_points(400)
+            ax.plot(pts[:, 0], pts[:, 1], color="0.4", lw=1.0)
+        ax.axvline(x_val, color="r", ls="--")
+        for pt in dedup:
+            ax.plot(pt[0], pt[1], "ro")
         ax.set_aspect("equal", adjustable="box")
         plt.show()
-    raise RuntimeError(f"Could not find two side intersections at X={float(X):.4f}")
+
+    raise RuntimeError(f"Could not find two side intersections at X={x_val:.4f}")
 
 
 def _spine_point_at_X(lute, X: float):
