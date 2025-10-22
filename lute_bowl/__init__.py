@@ -16,9 +16,6 @@ from .bowl_top_curves import (
     resolve_top_curve,
 )
 from .bowl_mold import MoldSection, build_mold_sections
-from .rib_form_builder import (
-    plot_lute_ribs,
-)
 from .planar_bowl_generator import build_planar_bowl_for_lute
 from .planar_rib_form_builder import build_planar_rib_surfaces, plot_planar_ribs
 
@@ -37,7 +34,6 @@ __all__ = [
     "resolve_top_curve",
     "MoldSection",
     "build_mold_sections",
-    "plot_lute_ribs",
     "build_planar_rib_surfaces",
     "plot_planar_ribs",
 ]
