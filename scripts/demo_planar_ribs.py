@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import lute_bowl.planar_bowl_generator as planar_bowl
 from lute_bowl.rib_form_builder import build_rib_surfaces
+from lute_bowl.top_curves import TopCurve
 from plotting.bowl import plot_rib_surfaces
 from plotting.step_renderers import write_rib_surfaces_step
 
@@ -80,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     lute_cls = _resolve_class(args.lute)
     curve_cls = _resolve_class(args.curve)
+    if not isinstance(curve_cls, type) or not issubclass(curve_cls, TopCurve):
+        raise TypeError("curve must reference a TopCurve subclass")
     lute = lute_cls()
 
     sections, rib_outlines = planar_bowl.build_planar_bowl_for_lute(

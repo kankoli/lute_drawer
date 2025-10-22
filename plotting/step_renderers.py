@@ -7,7 +7,7 @@ from typing import Iterable, Sequence
 
 import numpy as np
 
-from lute_bowl.bowl_mold import MoldSection
+from lute_bowl.mold_builder import MoldSection
 
 
 class _StepBuilder:

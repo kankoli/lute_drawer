@@ -13,7 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
-from lute_bowl.bowl_mold import build_mold_sections
+from lute_bowl.mold_builder import build_mold_sections
+from lute_bowl.top_curves import TopCurve
 from plotting import plot_bowl, plot_mold_sections_2d
 from plotting.step_renderers import write_mold_sections_step
 
@@ -129,15 +130,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     lute_cls = _resolve_class(args.lute)
     lute = lute_cls()
 
-    top_curve = None
-    if args.top_curve:
-        top_curve = _resolve_class(args.top_curve)
+    top_curve_cls = _resolve_class(args.top_curve) if args.top_curve else None
+    if top_curve_cls is None or not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve):
+        raise TypeError("--top-curve must reference a TopCurve subclass")
 
     sections, ribs = build_planar_bowl_for_lute(
         lute,
         n_ribs=args.ribs,
         n_sections=args.sections,
-        top_curve=top_curve,
+        top_curve=top_curve_cls,
         upper_block_units=args.upper_block,
         lower_block_units=args.lower_block,
         debug=args.debug,
