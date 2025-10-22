@@ -49,7 +49,7 @@ class Section(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def circle_through_three_points_2d(P1, P2, P3):
+def _circle_through_three_points_2d(P1, P2, P3):
     """Circle through 3 points in the YZ-plane (inputs are 2D [Y,Z] coords)."""
     P1 = np.asarray(P1, float)
     P2 = np.asarray(P2, float)
@@ -216,7 +216,7 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float], *, debug: b
         else:
             return None
     apex = np.array([Y_apex, Z_apex])
-    C_YZ, r = circle_through_three_points_2d(
+    C_YZ, r = _circle_through_three_points_2d(
         np.array([float(L[1]), 0.0]),
         np.array([float(R[1]), 0.0]),
         apex,
