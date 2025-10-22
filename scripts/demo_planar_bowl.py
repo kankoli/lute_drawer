@@ -13,7 +13,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
-from plotting import plot_bowl
+from lute_bowl.bowl_mold import build_mold_sections
+from plotting import plot_bowl, plot_mold_sections_2d
+from plotting.step_renderers import write_mold_sections_step
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
@@ -72,6 +74,52 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable verbose section sampling diagnostics.",
     )
+    parser.add_argument(
+        "--build-molds",
+        action="store_true",
+        help="Generate mold sections alongside the bowl plot.",
+    )
+    parser.add_argument(
+        "--stations",
+        type=int,
+        default=6,
+        help="Number of mold stations (requires --build-molds).",
+    )
+    parser.add_argument(
+        "--thickness",
+        type=float,
+        default=30.0,
+        help="Board thickness along the spine in millimetres.",
+    )
+    parser.add_argument(
+        "--neck-limit",
+        type=float,
+        default=100.0,
+        help="Neck-side limit for mold faces (mm from top).",
+    )
+    parser.add_argument(
+        "--tail-limit",
+        type=float,
+        default=15.0,
+        help="Tail-side limit for mold faces (mm from top).",
+    )
+    parser.add_argument(
+        "--plot2d",
+        action="store_true",
+        help="Plot mold sections in 2D instead of overlaying on the 3D bowl.",
+    )
+    parser.add_argument(
+        "--step-out",
+        type=Path,
+        default=None,
+        help="Optional STEP (.stp) filepath for exported mold sections.",
+    )
+    parser.add_argument(
+        "--step-support-extension",
+        type=float,
+        default=0.0,
+        help="Additional tail support extension in millimetres for STEP output.",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
@@ -95,6 +143,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         debug=args.debug,
     )
 
+    mold_sections = None
+    if args.build_molds or args.step_out is not None or args.plot2d:
+        mold_sections = build_mold_sections(
+            sections=sections,
+            ribs=ribs,
+            n_stations=args.stations,
+            board_thickness_mm=args.thickness,
+            lute=lute,
+            neck_limit_mm=args.neck_limit,
+            tail_limit_mm=args.tail_limit,
+        )
+
+        if args.step_out is not None:
+            scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+            step_path = write_mold_sections_step(
+                mold_sections,
+                args.step_out,
+                unit_scale=scale,
+                author="demo_planar_bowl",
+                organization="lute_drawer",
+            )
+            print(f"STEP export written to {step_path}")
+
+        if args.plot2d:
+            plot_mold_sections_2d(
+                mold_sections,
+                form_top=lute.form_top,
+                form_bottom=lute.form_bottom,
+                lute_name=type(lute).__name__,
+            )
+
     plot_bowl(
         lute,
         sections,
@@ -102,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_section_circles=not args.hide_section_circles,
         show_top_curve=args.show_top_curve,
         top_curve_name=getattr(lute, "top_curve_label", None),
+        mold_sections=mold_sections,
     )
 
     import matplotlib.pyplot as plt

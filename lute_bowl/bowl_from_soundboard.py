@@ -4,7 +4,7 @@
 #
 # Usage:
 #   lute = ManolLavta()
-#   sections, ribs = build_bowl_for_lute(lute, n_ribs=13, n_sections=100)
+#   sections, ribs = build_planar_bowl_for_lute(lute, n_ribs=13, n_sections=100)
 #   from plotting.bowl import plot_bowl
 #   plot_bowl(lute, sections, ribs)
 
@@ -394,49 +394,3 @@ def _derive_planar_ribs(
             trace.append(np.array([x, y, z], dtype=float))
 
     return [np.asarray(trace, dtype=float) for trace in ribs]
-
-
-def build_bowl_for_lute(
-    lute,
-    n_ribs: int = 13,
-    n_sections: int = 200,
-    margin: float = 0.0,
-    debug: bool = False,
-    top_curve: type[TopCurve] = SimpleAmplitudeCurve,
-) -> tuple[List[Section], List[np.ndarray]]:
-    """Build a 3D bowl from a lute soundboard and a chosen top curve."""
-    if not isinstance(top_curve, type) or not issubclass(top_curve, TopCurve):
-        raise TypeError("top_curve must be a TopCurve subclass")
-
-    z_top = top_curve.build(lute)
-    setattr(lute, "top_curve_label", top_curve.__name__)
-
-    xs = _select_section_positions(lute, n_sections, margin, debug)
-
-    neck_point = getattr(lute, "point_neck_joint", None)
-    x_start = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
-    x_end = float(lute.form_bottom.x)
-
-    interior_xs = xs[1:-1] if len(xs) > 2 else []
-    sections = _build_sections(lute, interior_xs, z_top, debug=debug)
-    sections = _add_endcap_sections(lute, sections, x_start, x_end)
-
-    ribs: List[np.ndarray] = []
-    if sections:
-        ribs = _derive_planar_ribs(
-            lute,
-            sections,
-            n_ribs,
-            x_start,
-            x_end,
-        )
-    if ribs:
-        X_ft = float(lute.form_top.x)
-        Y_ft = float(lute.form_top.y)
-        X_fb = float(lute.form_bottom.x)
-        Y_fb = float(lute.form_bottom.y)
-        for rib in ribs:
-            rib[0] = np.array([X_ft, Y_ft, 0.0], dtype=float)
-            rib[-1] = np.array([X_fb, Y_fb, 0.0], dtype=float)
-
-    return sections, ribs

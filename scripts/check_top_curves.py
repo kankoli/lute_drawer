@@ -15,7 +15,7 @@ from utils.analysis_utils import (
     iter_concrete_lute_classes,
     sandboxed_renderer,
 )
-from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute
 
 
 @dataclass
@@ -36,7 +36,7 @@ def analyse_lute_curve(lute_cls: type, curve_cls: type, n_sections: int, n_ribs:
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", RuntimeWarning)
-        sections, _ = build_bowl_for_lute(
+        sections, _ = build_planar_bowl_for_lute(
             lute,
             n_ribs=n_ribs,
             n_sections=n_sections,
