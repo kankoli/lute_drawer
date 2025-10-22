@@ -101,7 +101,6 @@ def _planar_quads_between_ribs(rib_a: np.ndarray, rib_b: np.ndarray) -> List[np.
     return quads
 
 
-
 def _normalize_quads(outline1: np.ndarray, outline2: np.ndarray, quads: list[np.ndarray]):
     outline1 = np.asarray(outline1, float)
     outline2 = np.asarray(outline2, float)

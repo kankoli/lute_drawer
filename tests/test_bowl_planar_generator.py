@@ -1,6 +1,19 @@
+import sys
+import types
 import unittest
 
 import numpy as np
+
+matplotlib_stub = types.ModuleType("matplotlib")
+matplotlib_stub.__path__ = []
+pyplot_stub = types.ModuleType("matplotlib.pyplot")
+pyplot_stub.figure = lambda *args, **kwargs: None
+pyplot_stub.subplots = lambda *args, **kwargs: (None, None)
+pyplot_stub.show = lambda *args, **kwargs: None
+pyplot_stub.tight_layout = lambda *args, **kwargs: None
+matplotlib_stub.pyplot = pyplot_stub
+sys.modules.setdefault("matplotlib", matplotlib_stub)
+sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lute_soundboard as lutes
 from lute_bowl.planar_bowl_generator import build_planar_bowl_for_lute

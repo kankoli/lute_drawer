@@ -25,9 +25,6 @@ from .bowl_top_curves import (
     SideProfilePerControlTopCurve,
     SimpleAmplitudeCurve,
     TopCurve,
-    resolve_top_curve,
-    resolve_amplitude,
-    resolve_widths,
 )
 
 # ---------------------------------------------------------------------------
@@ -399,139 +396,20 @@ def _derive_planar_ribs(
     return [np.asarray(trace, dtype=float) for trace in ribs]
 
 
-def _build_side_profile_top_curve(lute, params: SideProfileParameters) -> Callable[[float], float]:
-    margin = params.margin
-    n_samples = params.samples
-    xs = _select_section_positions(lute, n_samples, margin, debug=False)
-
-    W = []
-    for X in xs:
-        hit = _extract_side_points_at_X(lute, X)
-        if hit is None:
-            W.append(0.0)
-            continue
-        L, R, _ = hit
-        y_spine = _spine_point_at_X(lute, X)
-        W.append(max(abs(float(L[1]) - y_spine), abs(float(R[1]) - y_spine)))
-    W = np.asarray(W, float)
-    if W.size == 0 or float(W.max()) < 1e-12:
-        return lambda _x: 0.0
-    W[0] = 0.0
-    W[-1] = 0.0
-    N = W / float(W.max())
-
-    ctrl_x_all = {
-        "neck_joint": float(lute.point_neck_joint.x),
-        "form_center": float(lute.form_center.x),
-        "bridge": float(lute.bridge.x),
-    }
-
-    getter = getattr(lute, "_get_soundhole_center", None)
-    if callable(getter):
-        try:
-            center = getter()
-            if center is not None:
-                ctrl_x_all["soundhole_center"] = float(center.x)
-        except Exception:
-            pass
-
-    if "soundhole_center" not in ctrl_x_all and getattr(lute, "soundhole_center", None) is not None:
-        try:
-            ctrl_x_all["soundhole_center"] = float(lute.soundhole_center.x)
-        except Exception:
-            pass
-
-    gammas = {k: params.gammas[k] for k in params.gammas if k in ctrl_x_all}
-    if not gammas:
-        amplitude = resolve_amplitude(lute, params)
-
-        def z_top_lin(x):
-            return float(amplitude * np.interp(float(x), xs, N, left=0.0, right=0.0))
-
-        return z_top_lin
-
-    xc = np.array([ctrl_x_all[k] for k in gammas], float)
-    gc = np.array([float(gammas[k]) for k in gammas], float)
-    order = np.argsort(xc)
-    xc = xc[order]
-    gc = gc[order]
-
-    widths = resolve_widths(lute, params)
-    sig = []
-    for idx, key in enumerate(np.array(list(gammas.keys()))[order]):
-        width = widths.get(key)
-        if width and width > 0.0:
-            sig.append(float(width))
-        else:
-            left_gap = xc[idx] - (xc[idx - 1] if idx - 1 >= 0 else float(lute.form_top.x))
-            right_gap = (xc[idx + 1] if idx + 1 < len(xc) else float(lute.form_bottom.x)) - xc[idx]
-            local = 0.5 * (abs(left_gap) + abs(right_gap))
-            sig.append(max(1e-6, float(params.width_factor) * local))
-    sig = np.array(sig, float)
-
-    Xdiff2 = (xs[:, None] - xc[None, :]) ** 2
-    if params.kernel == "gauss":
-        w = np.exp(-Xdiff2 / (2.0 * (sig[None, :] ** 2 + 1e-12)))
-    else:
-        w = 1.0 / (1.0 + (Xdiff2 / (sig[None, :] ** 2 + 1e-12)))
-    Wnorm = w / (np.sum(w, axis=1, keepdims=True) + 1e-12)
-    log_gammas = np.log(np.clip(gc[None, :], 1e-6, None))
-    logE = np.sum(Wnorm * log_gammas, axis=1)
-    E = np.clip(np.exp(logE), 1.0 - float(params.max_exponent_delta), 1.0 + float(params.max_exponent_delta))
-
-    if params.gate_start > 0.0 or params.gate_full > 0.0:
-        a = float(params.gate_start)
-        b = float(params.gate_full)
-        if b <= a + 1e-9:
-            b = min(1.0, a + 1e-3)
-        t = (N - a) / (b - a)
-        t = np.clip(t, 0.0, 1.0)
-        gate = t * t * (3 - 2 * t)
-        E = 1.0 + gate * (E - 1.0)
-
-    N_shaped = N ** E
-    amplitude = resolve_amplitude(lute, params)
-
-    def z_top(x):
-        return float(amplitude * np.interp(float(x), xs, N_shaped, left=0.0, right=0.0))
-
-    return z_top
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def _resolve_top_curve(lute, top_curve):
-    resolved = resolve_top_curve(lute, top_curve, _build_side_profile_top_curve)
-
-    if isinstance(top_curve, type) and issubclass(top_curve, TopCurve):
-        label = top_curve.__name__
-    elif isinstance(top_curve, TopCurve):
-        label = type(top_curve).__name__
-    elif callable(top_curve):
-        label = getattr(top_curve, "__name__", None) or top_curve.__class__.__name__
-    else:
-        label = None
-
-    if label is None:
-        label = SideProfilePerControlTopCurve.__name__
-
-    setattr(lute, "top_curve_label", label)
-    return resolved
-
-
 def build_bowl_for_lute(
     lute,
     n_ribs: int = 13,
     n_sections: int = 200,
     margin: float = 0.0,
     debug: bool = False,
-    top_curve=None,
-):
+    top_curve: type[TopCurve] = SimpleAmplitudeCurve,
+) -> tuple[List[Section], List[np.ndarray]]:
     """Build a 3D bowl from a lute soundboard and a chosen top curve."""
-    z_top = _resolve_top_curve(lute, top_curve)
+    if not isinstance(top_curve, type) or not issubclass(top_curve, TopCurve):
+        raise TypeError("top_curve must be a TopCurve subclass")
+
+    z_top = top_curve.build(lute)
+    setattr(lute, "top_curve_label", top_curve.__name__)
 
     xs = _select_section_positions(lute, n_sections, margin, debug)
 

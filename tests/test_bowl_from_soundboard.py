@@ -18,8 +18,28 @@ sys.modules.setdefault("matplotlib", matplotlib_stub)
 sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
 
 import lute_soundboard as lutes
-from lute_bowl.bowl_from_soundboard import _resolve_top_curve, build_bowl_for_lute
-from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve
+from lute_bowl.bowl_from_soundboard import build_bowl_for_lute
+from lute_bowl.bowl_top_curves import SimpleAmplitudeCurve, TopCurve
+
+plotting_stub = types.ModuleType("plotting")
+svg_stub = types.ModuleType("plotting.svg")
+
+
+class _DummySvgRenderer:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def draw(self, *args, **kwargs):
+        pass
+
+    def save(self, *args, **kwargs):
+        pass
+
+
+svg_stub.SvgRenderer = _DummySvgRenderer
+plotting_stub.svg = svg_stub
+sys.modules.setdefault("plotting", plotting_stub)
+sys.modules.setdefault("plotting.svg", svg_stub)
 
 
 class BuildBowlForLuteTests(unittest.TestCase):
@@ -28,27 +48,24 @@ class BuildBowlForLuteTests(unittest.TestCase):
 
     @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_constant_curve_shapes(self, mock_draw):
-        top_curve = lambda _: 1.0
-        lute = self._make_lute()
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            sections, rib_outlines = build_bowl_for_lute(lute, n_ribs=4, n_sections=8, top_curve=top_curve)
+        class ConstantCurve(TopCurve):
+            @classmethod
+            def build(cls, lute):
+                return lambda _: 1.0
 
-        self.assertTrue(
-            any(
-                issubclass(w.category, RuntimeWarning)
-                and "Section circle center" in str(w.message)
-                for w in caught
-            )
-        )
+        lute = self._make_lute()
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            sections, rib_outlines = build_bowl_for_lute(lute, n_ribs=4, n_sections=8, top_curve=ConstantCurve)
 
         self.assertEqual(len(rib_outlines), 5)  # n+1 outlines for n ribs
-        self.assertEqual(len(sections), 8 + 2)
+        self.assertEqual(len(sections), 8)
         self.assertTrue(all(rib.shape == (len(sections), 3) for rib in rib_outlines))
 
         if len(sections) > 2:
+            curve = ConstantCurve.build(lute)
             for (x_pos, _, _, apex) in sections[1:-1]:
-                expected_z = top_curve(x_pos)
+                expected_z = curve(x_pos)
                 self.assertAlmostEqual(float(apex[1]), expected_z, places=6)
 
         for rib in rib_outlines:
@@ -64,13 +81,14 @@ class BuildBowlForLuteTests(unittest.TestCase):
 
     @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_enforces_minimum_rib_count(self, mock_draw):
-        lute = self._make_lute()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            sections, ribs = build_bowl_for_lute(lute, n_ribs=0, n_sections=5, top_curve=lambda _: 1.0)
+        class ConstantCurve(TopCurve):
+            @classmethod
+            def build(cls, lute):
+                return lambda _: 1.0
 
-        self.assertEqual(len(ribs), 2)
-        self.assertEqual(ribs[0].shape[0], len(sections))
+        lute = self._make_lute()
+        with self.assertRaises(ValueError):
+            build_bowl_for_lute(lute, n_ribs=0, n_sections=5, top_curve=ConstantCurve)
 
     @mock.patch("plotting.svg.SvgRenderer.draw", autospec=True)
     def test_build_bowl_without_soundhole(self, mock_draw):
@@ -92,26 +110,6 @@ class BuildBowlForLuteTests(unittest.TestCase):
         for rib in ribs:
             self.assertTrue(np.all(np.isfinite(rib[:, 2])))
             self.assertGreaterEqual(float(rib[:, 2].min()), -1e-9)
-
-
-class ResolveTopCurveTests(unittest.TestCase):
-    def setUp(self):
-        self.lute = lutes.ManolLavta()
-
-    def test_resolve_top_curve_passthrough(self):
-        sentinel = lambda _: 2.5
-        resolved = _resolve_top_curve(self.lute, sentinel)
-        self.assertIs(resolved, sentinel)
-
-    def test_resolve_top_curve_from_class(self):
-        resolved = _resolve_top_curve(self.lute, SimpleAmplitudeCurve)
-        self.assertTrue(callable(resolved))
-        sample_x = float(self.lute.form_center.x)
-        self.assertGreater(resolved(sample_x), 0.0)
-
-    def test_resolve_top_curve_from_instance(self):
-        resolved = _resolve_top_curve(self.lute, SimpleAmplitudeCurve())
-        self.assertTrue(callable(resolved))
 
 
 if __name__ == "__main__":

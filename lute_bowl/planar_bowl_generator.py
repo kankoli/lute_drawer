@@ -9,10 +9,9 @@ from .bowl_from_soundboard import (
     Section,
     _add_endcap_sections,
     _derive_planar_ribs,
-    _resolve_top_curve,
     _sample_section,
 )
-from .bowl_top_curves import SimpleAmplitudeCurve
+from .bowl_top_curves import SimpleAmplitudeCurve, TopCurve
 
 _EPS = 1e-9
 
@@ -22,7 +21,7 @@ def build_planar_bowl_for_lute(
     *,
     n_ribs: int = 13,
     n_sections: int = 200,
-    top_curve=None,
+    top_curve: type[TopCurve] = SimpleAmplitudeCurve,
     upper_block_units: float = 1.0,
     lower_block_units: float = 0.0,
     debug: bool = False,
@@ -31,10 +30,11 @@ def build_planar_bowl_for_lute(
     if n_sections < 2:
         raise ValueError("n_sections must be at least 2.")
 
-    if top_curve is None:
-        top_curve = SimpleAmplitudeCurve
+    if not isinstance(top_curve, type) or not issubclass(top_curve, TopCurve):
+        raise TypeError("top_curve must be a TopCurve subclass")
 
-    z_top = _resolve_top_curve(lute, top_curve)
+    z_top = top_curve.build(lute)
+    setattr(lute, "top_curve_label", top_curve.__name__)
 
     unit = float(getattr(lute, "unit", 1.0))
 

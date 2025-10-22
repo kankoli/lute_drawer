@@ -1,6 +1,33 @@
+import sys
+import types
 import unittest
 
 import numpy as np
+
+matplotlib_stub = types.ModuleType("matplotlib")
+matplotlib_stub.__path__ = []
+pyplot_stub = types.ModuleType("matplotlib.pyplot")
+pyplot_stub.figure = lambda *args, **kwargs: None
+pyplot_stub.subplots = lambda *args, **kwargs: (None, None)
+pyplot_stub.show = lambda *args, **kwargs: None
+pyplot_stub.tight_layout = lambda *args, **kwargs: None
+matplotlib_stub.pyplot = pyplot_stub
+sys.modules.setdefault("matplotlib", matplotlib_stub)
+sys.modules.setdefault("matplotlib.pyplot", pyplot_stub)
+
+plotting_stub = types.ModuleType("plotting")
+plotting_bowl_stub = types.ModuleType("plotting.bowl")
+plotting_bowl_stub.plot_rib_surfaces = lambda *args, **kwargs: None
+plotting_bowl_stub.plot_bowl = lambda *args, **kwargs: None
+plotting_bowl_stub.plot_mold_sections_2d = lambda *args, **kwargs: None
+plotting_step_stub = types.ModuleType("plotting.step_renderers")
+plotting_step_stub.write_rib_surfaces_step = lambda *args, **kwargs: None
+plotting_step_stub.write_mold_sections_step = lambda *args, **kwargs: None
+plotting_stub.bowl = plotting_bowl_stub
+plotting_stub.step_renderers = plotting_step_stub
+sys.modules.setdefault("plotting", plotting_stub)
+sys.modules.setdefault("plotting.bowl", plotting_bowl_stub)
+sys.modules.setdefault("plotting.step_renderers", plotting_step_stub)
 
 import lute_soundboard as lutes
 from lute_bowl.planar_rib_form_builder import build_planar_rib_surfaces
@@ -44,4 +71,3 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
