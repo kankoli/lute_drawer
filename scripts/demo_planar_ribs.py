@@ -49,18 +49,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
     parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
     parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based).")
-    parser.add_argument(
-        "--upper-block",
-        type=float,
-        default=0.0,
-        help="Extra clearance past the neck joint in geometry units (default: 0).",
-    )
-    parser.add_argument(
-        "--lower-block",
-        type=float,
-        default=0.0,
-        help="Extra clearance above the tail block in geometry units (default: 0).",
-    )
     parser.add_argument("--title", default=None)
     parser.add_argument(
         "--step-out",
@@ -91,8 +79,6 @@ def main(argv: list[str] | None = None) -> int:
         n_ribs=args.ribs,
         n_sections=args.sections,
         top_curve=curve_cls,
-        upper_block_units=args.upper_block,
-        lower_block_units=args.lower_block,
     )
     surfaces, outlines = build_rib_surfaces(
         rib_outlines=rib_outlines,

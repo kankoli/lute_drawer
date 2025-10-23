@@ -47,7 +47,7 @@ def plot_bowl(
     *,
     show_ribs: bool = True,
     show_soundboard: bool = True,
-    show_section_circles: bool = True,
+    show_section_circles: bool = False,
     show_apexes: bool = False,
     show_top_curve: bool = False,
     show_form_points: bool = True,

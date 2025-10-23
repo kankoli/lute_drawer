@@ -49,31 +49,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
     parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
     parser.add_argument(
-        "--upper-block",
-        type=float,
-        default=0.0,
-        help="Extra clearance past the neck joint in geometry units (default: 0).",
-    )
-    parser.add_argument(
-        "--lower-block",
-        type=float,
-        default=0.0,
-        help="Extra clearance above the tail block in geometry units (default: 0).",
-    )
-    parser.add_argument(
-        "--hide-section-circles",
+        "--show-section-circles",
         action="store_true",
-        help="Hide section circle overlays in the plot.",
+        help="Draw section circle overlays when section count allows.",
     )
     parser.add_argument(
         "--show-top-curve",
         action="store_true",
         help="Highlight the sampled top-curve spine.",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable verbose section sampling diagnostics.",
     )
     parser.add_argument(
         "--build-molds",
@@ -89,20 +72,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--thickness",
         type=float,
-        default=30.0,
-        help="Board thickness along the spine in millimetres.",
+        default=20.0,
+        help="Mold stations thickness along the spine in millimetres.",
     )
     parser.add_argument(
         "--neck-limit",
         type=float,
-        default=100.0,
-        help="Neck-side limit for mold faces (mm from top).",
+        default=1.0,
+        help="Neck-side limit for mold faces in geometry units (default: 1).",
     )
     parser.add_argument(
         "--tail-limit",
         type=float,
-        default=15.0,
-        help="Tail-side limit for mold faces (mm from top).",
+        default=0.15,
+        help="Tail-side limit for mold faces in geometry units (default: 0.15).",
     )
     parser.add_argument(
         "--plot2d",
@@ -139,9 +122,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         n_ribs=args.ribs,
         n_sections=args.sections,
         top_curve=top_curve_cls,
-        upper_block_units=args.upper_block,
-        lower_block_units=args.lower_block,
-        debug=args.debug,
     )
 
     mold_sections = None
@@ -152,8 +132,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             n_stations=args.stations,
             board_thickness_mm=args.thickness,
             lute=lute,
-            neck_limit_mm=args.neck_limit,
-            tail_limit_mm=args.tail_limit,
+            neck_limit=args.neck_limit,
+            tail_limit=args.tail_limit,
         )
 
         if args.step_out is not None:
@@ -175,11 +155,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 lute_name=type(lute).__name__,
             )
 
+    show_circles = False
+    if args.show_section_circles:
+        if len(sections) <= 80:
+            show_circles = True
+        else:
+            print("Warning: Section circles not shown because more than 80 sections were sampled.")
+
     plot_bowl(
         lute,
         sections,
         ribs,
-        show_section_circles=not args.hide_section_circles,
+        show_section_circles=show_circles,
         show_top_curve=args.show_top_curve,
         top_curve_name=getattr(lute, "top_curve_label", None),
         mold_sections=mold_sections,

@@ -22,11 +22,8 @@ def build_bowl_ribs(
     n_ribs: int = 13,
     n_sections: int = 200,
     top_curve: type[TopCurve] = SimpleAmplitudeCurve,
-    upper_block_units: float = 1.0,
-    lower_block_units: float = 0.0,
-    debug: bool = False,
 ) -> tuple[list[Section], List[np.ndarray]]:
-    """Return sampled sections and rib polylines between the end blocks."""
+    """Return sampled sections and rib polylines between neck joint and tail."""
     if n_sections < 2:
         raise ValueError("n_sections must be at least 2.")
 
@@ -36,14 +33,9 @@ def build_bowl_ribs(
     z_top = top_curve.build(lute)
     setattr(lute, "top_curve_label", top_curve.__name__)
 
-    unit = float(getattr(lute, "unit", 1.0))
-
     neck_point = getattr(lute, "point_neck_joint", None)
-    neck_x = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
-
-    start_x = neck_x + float(upper_block_units) * unit
-    bottom = float(lute.form_bottom.x)
-    end_x = bottom - float(lower_block_units) * unit
+    start_x = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
+    end_x = float(lute.form_bottom.x)
 
     if start_x >= end_x - _EPS:
         raise ValueError("End blocks overlap the bowl span; adjust block sizes.")
@@ -55,7 +47,7 @@ def build_bowl_ribs(
 
     for X in interior_xs:
         try:
-            section = _sample_section(lute, float(X), z_top, debug=debug)
+            section = _sample_section(lute, float(X), z_top)
         except Exception as exc:  # pragma: no cover - diagnostic aid
             raise RuntimeError(f"Failed to sample section at X={float(X):.6f}") from exc
         if section is None:

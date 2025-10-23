@@ -198,8 +198,8 @@ def _select_section_positions(lute, n_sections: int, margin: float, debug: bool)
     return xs
 
 
-def _sample_section(lute, X: float, z_top: Callable[[float], float], *, debug: bool) -> Section | None:
-    hit = _extract_side_points_at_X(lute, X, debug=debug)
+def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section | None:
+    hit = _extract_side_points_at_X(lute, X)
     if hit is None:
         return None
     L, R, Xs = hit
@@ -230,21 +230,6 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float], *, debug: b
             RuntimeWarning,
         )
     return Section(Xs, C_YZ, float(r), apex)
-
-
-def _build_sections(lute, xs: Sequence[float], z_top: Callable[[float], float], *, debug: bool) -> List[Section]:
-    sections: List[Section] = []
-    for X in xs:
-        try:
-            section = _sample_section(lute, X, z_top, debug=debug)
-        except Exception as exc:
-            if debug:
-                print(f"Section FAILED at X={X:.4f}: {exc}")
-            continue
-        if section is not None:
-            sections.append(section)
-    return sections
-
 
 def _add_endcap_sections(lute, sections: Sequence[Section], x_start: float, x_end: float) -> List[Section]:
     y_start = float(_spine_point_at_X(lute, x_start))

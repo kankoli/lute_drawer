@@ -49,8 +49,6 @@ class PlanarBowlGeneratorTests(unittest.TestCase):
             self.lute,
             n_ribs=6,
             n_sections=40,
-            upper_block_units=0.0,
-            lower_block_units=0.0,
         )
 
         self.assertEqual(len(ribs), 7)
