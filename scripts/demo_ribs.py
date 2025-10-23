@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             args.step_out,
             unit_scale=scale,
             support_extension_mm=args.step_support_extension,
-            author="demo_planar_ribs",
+            author="demo_ribs",
             organization="lute_drawer",
         )
         print(f"STEP export written to {args.step_out}")
