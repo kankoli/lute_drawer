@@ -7,6 +7,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -80,10 +82,21 @@ def main(argv: list[str] | None = None) -> int:
         n_sections=args.sections,
         top_curve=curve_cls,
     )
-    surfaces, outlines = build_rib_surfaces(
+    surfaces = build_rib_surfaces(
         rib_outlines=rib_outlines,
         rib_index=args.rib_index,
     )
+
+    outlines = [
+        (
+            rib_idx,
+            (
+                np.asarray(rib_outlines[rib_idx - 1], dtype=float),
+                np.asarray(rib_outlines[rib_idx], dtype=float),
+            ),
+        )
+        for rib_idx, _ in surfaces
+    ]
 
     plot_rib_surfaces(
         surfaces,

@@ -11,7 +11,7 @@ def build_rib_surfaces(
     *,
     rib_outlines: Sequence[np.ndarray],
     rib_index: int | Sequence[int] | None = None,
-) -> tuple[list[tuple[int, list[np.ndarray]]], list[tuple[int, tuple[np.ndarray, np.ndarray]]]]:
+) -> list[tuple[int, list[np.ndarray]]]:
     """Return rib surfaces from precomputed planar rib outlines."""
 
     if len(rib_outlines) < 2:
@@ -25,7 +25,6 @@ def build_rib_surfaces(
         indices = [int(rib_index) - 1]
 
     surfaces: list[tuple[int, list[np.ndarray]]] = []
-    outlines: list[tuple[int, tuple[np.ndarray, np.ndarray]]] = []
 
     for idx in indices:
         if idx < 0 or idx >= len(rib_outlines) - 1:
@@ -35,9 +34,8 @@ def build_rib_surfaces(
         _validate_planar_pair(rib_a, rib_b)
         quads = _planar_quads_between_ribs(rib_a, rib_b)
         surfaces.append((idx + 1, quads))
-        outlines.append((idx + 1, (rib_a, rib_b)))
 
-    return surfaces, outlines
+    return surfaces
 
 
 def _validate_planar_pair(rib_a: np.ndarray, rib_b: np.ndarray) -> None:

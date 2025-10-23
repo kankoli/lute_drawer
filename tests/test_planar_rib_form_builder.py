@@ -44,7 +44,7 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
             n_ribs=4,
             n_sections=30,
         )
-        surfaces, outlines = build_rib_surfaces(
+        surfaces = build_rib_surfaces(
             rib_outlines=rib_outlines,
             rib_index=2,
         )
@@ -54,7 +54,8 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
         self.assertEqual(rib_idx, 2)
         self.assertEqual(len(quads), len(sections) - 1)
 
-        _, (rib_a, rib_b) = outlines[0]
+        rib_a = np.asarray(rib_outlines[rib_idx - 1], dtype=float)
+        rib_b = np.asarray(rib_outlines[rib_idx], dtype=float)
         self.assertEqual(rib_a.shape, rib_b.shape)
         self.assertEqual(rib_a.shape[0], len(sections))
 
