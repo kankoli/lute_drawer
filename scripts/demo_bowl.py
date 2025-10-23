@@ -93,6 +93,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Plot mold sections in 2D instead of overlaying on the 3D bowl.",
     )
     parser.add_argument(
+        "--plot2d-section",
+        type=int,
+        default=None,
+        help="Optional mold section index for --plot2d; negative indices allowed.",
+    )
+    parser.add_argument(
         "--step-out",
         type=Path,
         default=None,
@@ -147,9 +153,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(f"STEP export written to {step_path}")
 
-        if args.plot2d:
+        if args.plot2d or args.plot2d_section:
             plot_mold_sections_2d(
                 mold_sections,
+                section_index=args.plot2d_section,
                 form_top=lute.form_top,
                 form_bottom=lute.form_bottom,
                 lute_name=type(lute).__name__,

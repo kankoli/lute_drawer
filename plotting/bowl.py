@@ -223,6 +223,7 @@ def plot_bowl(
 def plot_mold_sections_2d(
     sections: Sequence[MoldSection],
     *,
+    section_index: int | None = None,
     ax=None,
     show_rib_points: bool = True,
     invert_z: bool = True,
@@ -230,12 +231,24 @@ def plot_mold_sections_2d(
     form_bottom=None,
     lute_name: str | None = None,
 ):
-    """2D visualisation for mold section faces."""
+    """2D visualisation for mold section faces.
+
+    When `section_index` is provided, only that section is rendered."""
 
     if ax is None:
         _, ax = plt.subplots()
 
-    for section in sections:
+    if section_index is None:
+        iterable = sections
+    else:
+        idx = section_index
+        if idx < 0:
+            idx += len(sections)
+        if idx < 0 or idx >= len(sections):
+            raise IndexError(f"section_index {section_index} out of range for {len(sections)} sections")
+        iterable = (sections[idx],)
+
+    for section in iterable:
         color = None
         for face in section.faces:
             label = f"X={face.x:.1f}" if color is None else None
