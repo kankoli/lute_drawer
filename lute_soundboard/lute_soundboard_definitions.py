@@ -370,6 +370,11 @@ class IstanbulLavta(LuteSoundboard):
         self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 4
         self.bridge = self.geo.translate_x(self.form_bottom, -self.vertical_unit)
 
+    def measurement_pairs(self) -> List[Tuple[str, float]]:
+        pairs = super().measurement_pairs()
+        if self.soundhole_radius:
+            pairs.append(("Soundhole radius", self.soundhole_radius))
+        return pairs
 
 class IkwanAlSafaOud(LuteSoundboard):
     top_arc = TopArcType2()
