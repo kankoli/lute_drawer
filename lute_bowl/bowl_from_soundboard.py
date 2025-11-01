@@ -143,6 +143,14 @@ def _extract_side_points_at_X(lute, X, *, debug=False, min_width=1e-3, samples_p
         yR = dedup[-1][1]
         if abs(yR - yL) >= min_width:
             return (np.array([x_val, yL]), np.array([x_val, yR]), x_val)
+        mid_y = 0.5 * (yL + yR)
+        point = np.array([x_val, mid_y], dtype=float)
+        return (point, point.copy(), x_val)
+
+    if len(dedup) == 1:
+        y = float(dedup[0][1])
+        point = np.array([x_val, y], dtype=float)
+        return (point, point.copy(), x_val)
 
     if debug:
         import matplotlib.pyplot as plt
@@ -176,8 +184,7 @@ def _spine_point_xyz(lute, x: float) -> np.ndarray:
 
 
 def _select_section_positions(lute, n_sections: int, margin: float, debug: bool) -> np.ndarray:
-    neck_point = getattr(lute, "point_neck_joint", None)
-    x_top = float(neck_point.x) if neck_point is not None else float(lute.form_top.x)
+    x_top = float(lute.form_top.x)
     x_bottom = float(lute.form_bottom.x)
     span = x_bottom - x_top
     if span <= _EPS:
@@ -205,6 +212,12 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
     L, R, Xs = hit
     Y_apex = _spine_point_at_X(lute, Xs)
     Z_apex = float(z_top(Xs))
+    width = abs(float(L[1]) - float(R[1]))
+    if width <= 1e-6:
+        apex = np.array([float(Y_apex), max(Z_apex, 0.0)], dtype=float)
+        center = np.array([float(Y_apex), 0.0], dtype=float)
+        return Section(Xs, center, 0.0, apex)
+
     if abs(Z_apex) < 1e-6:
         dist_bottom = abs(float(lute.form_bottom.x) - float(Xs))
         if dist_bottom <= 1.0:
@@ -230,14 +243,6 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
             RuntimeWarning,
         )
     return Section(Xs, C_YZ, float(r), apex)
-
-def _add_endcap_sections(lute, sections: Sequence[Section], x_start: float, x_end: float) -> List[Section]:
-    y_start = float(_spine_point_at_X(lute, x_start))
-    y_end = float(_spine_point_at_X(lute, x_end))
-    start = Section(x_start, np.array([y_start, 0.0]), 0.0, np.array([y_start, 0.0]))
-    end = Section(x_end, np.array([y_end, 0.0]), 0.0, np.array([y_end, 0.0]))
-    return [start, *sections, end]
-
 
 # ---------------------------------------------------------------------------
 # Ribs

@@ -5,12 +5,7 @@ from typing import List
 
 import numpy as np
 
-from .bowl_from_soundboard import (
-    Section,
-    _add_endcap_sections,
-    _derive_planar_ribs,
-    _sample_section,
-)
+from .bowl_from_soundboard import Section, _derive_planar_ribs, _sample_section
 from .top_curves import SimpleAmplitudeCurve, TopCurve
 
 _EPS = 1e-9
@@ -43,6 +38,15 @@ def build_bowl_ribs(
     xs = np.linspace(start_x, end_x, n_sections)
     sections: list[Section] = []
 
+    try:
+        start_section = _sample_section(lute, float(start_x), z_top)
+    except Exception as exc:  # pragma: no cover - diagnostic aid
+        raise RuntimeError(f"Failed to sample section at X={float(start_x):.6f}") from exc
+    if start_section is None:
+        raise RuntimeError(f"No valid section geometry at X={float(start_x):.6f}")
+
+    sections.append(start_section)
+
     interior_xs = xs[1:-1] if len(xs) > 2 else []
 
     for X in interior_xs:
@@ -54,7 +58,13 @@ def build_bowl_ribs(
             raise RuntimeError(f"No valid section geometry at X={float(X):.6f}")
         sections.append(section)
 
-    sections = _add_endcap_sections(lute, sections, start_x, end_x)
+    try:
+        end_section = _sample_section(lute, float(end_x), z_top)
+    except Exception as exc:  # pragma: no cover - diagnostic aid
+        raise RuntimeError(f"Failed to sample section at X={float(end_x):.6f}") from exc
+    if end_section is None:
+        raise RuntimeError(f"No valid section geometry at X={float(end_x):.6f}")
+    sections.append(end_section)
 
     ribs = _derive_planar_ribs(lute, sections, n_ribs, start_x, end_x)
 
