@@ -16,8 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import lute_bowl.rib_builder as rib_builder
 from lute_bowl.rib_form_builder import build_rib_surfaces
 from lute_bowl.top_curves import TopCurve
-from plotting.bowl import plot_rib_surfaces
-from plotting.step_renderers import write_rib_surfaces_step
+from plotting.ribs import plot_rib_surfaces
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.MidCurve"
@@ -52,18 +51,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
     parser.add_argument("--rib-index", type=int, default=7, help="Single rib index (1-based).")
     parser.add_argument("--title", default=None)
-    parser.add_argument(
-        "--step-out",
-        type=Path,
-        default=None,
-        help="Optional STEP (.stp) file for exported rib panels.",
-    )
-    parser.add_argument(
-        "--step-support-extension",
-        type=float,
-        default=0.0,
-        help="Extra distance to extend support beyond tail (mm) when exporting STEP.",
-    )
     return parser.parse_args(argv)
 
 
@@ -104,18 +91,6 @@ def main(argv: list[str] | None = None) -> int:
         title=args.title,
         lute_name=type(lute).__name__,
     )
-
-    if args.step_out is not None:
-        scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
-        write_rib_surfaces_step(
-            surfaces,
-            args.step_out,
-            unit_scale=scale,
-            support_extension_mm=args.step_support_extension,
-            author="demo_ribs",
-            organization="lute_drawer",
-        )
-        print(f"STEP export written to {args.step_out}")
 
     return 0
 
