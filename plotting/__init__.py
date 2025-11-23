@@ -8,6 +8,7 @@ __all__ = [
     "plot_bowl",
     "plot_rib_surfaces",
     "plot_rib_surface_with_planes",
+    "save_plane_projection_png",
     "set_axes_equal_3d",
     "plot_mold_sections_2d",
     "write_mold_sections_step",
@@ -21,7 +22,7 @@ def __getattr__(name: str) -> Any:
     if name in {"plot_bowl", "set_axes_equal_3d", "plot_mold_sections_2d"}:
         module = import_module("plotting.bowl")
         return getattr(module, name)
-    if name in {"plot_rib_surfaces", "plot_rib_surface_with_planes"}:
+    if name in {"plot_rib_surfaces", "plot_rib_surface_with_planes", "save_plane_projection_png"}:
         module = import_module("plotting.ribs")
         return getattr(module, name)
     if name == "write_mold_sections_step":
