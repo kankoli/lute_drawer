@@ -195,3 +195,4 @@ Temporary Items
 # Ignore the lute geometry forum capture
 # httrack "https://www.mikeouds.com/messageboard/viewthread.php?action=printable&tid=11186" -O "lute_geometry_forum/" --depth=2
 lute_geometry_forum/
+output/

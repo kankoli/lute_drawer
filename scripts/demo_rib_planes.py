@@ -47,7 +47,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lute", default=DEFAULT_LUTE, help=f"Default: {DEFAULT_LUTE}")
     parser.add_argument("--curve", default=DEFAULT_CURVE, help=f"Default: {DEFAULT_CURVE}")
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals to sample")
-    parser.add_argument("--sections", type=int, default=160, help="Sections along the spine")
+    parser.add_argument(
+        "--sections",
+        type=int,
+        default=None,
+        help="Sections along the spine (omit to use build_bowl_ribs default).",
+    )
     parser.add_argument("--rib-index", type=int, default=7, help="Rib index (1-based) to visualize")
     parser.add_argument("--title", default=None, help="Optional Matplotlib title override")
     parser.add_argument(
@@ -82,12 +87,10 @@ def main(argv: list[str] | None = None) -> int:
 
     lute = lute_cls()
     unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
-    _, rib_outlines = rib_builder.build_bowl_ribs(
-        lute,
-        n_ribs=args.ribs,
-        n_sections=args.sections,
-        top_curve=curve_cls,
-    )
+    build_kwargs = {"n_ribs": args.ribs, "top_curve": curve_cls}
+    if args.sections is not None:
+        build_kwargs["n_sections"] = args.sections
+    _, rib_outlines = rib_builder.build_bowl_ribs(lute, **build_kwargs)
     surfaces = build_rib_surfaces(rib_outlines=rib_outlines, rib_index=args.rib_index)
     if not surfaces:
         raise RuntimeError(f"No surfaces returned for rib index {args.rib_index}")

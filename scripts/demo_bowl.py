@@ -47,7 +47,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=f"Fully qualified top-curve class or omit for default (default: {DEFAULT_CURVE})",
     )
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
-    parser.add_argument("--sections", type=int, default=160, help="Number of planar section samples.")
+    parser.add_argument(
+        "--sections",
+        type=int,
+        default=None,
+        help="Number of planar section samples (omit to use build_bowl_ribs default).",
+    )
     parser.add_argument(
         "--show-section-circles",
         action="store_true",
@@ -123,12 +128,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if top_curve_cls is None or not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve):
         raise TypeError("--top-curve must reference a TopCurve subclass")
 
-    sections, ribs = build_bowl_ribs(
-        lute,
-        n_ribs=args.ribs,
-        n_sections=args.sections,
-        top_curve=top_curve_cls,
-    )
+    build_kwargs = {"n_ribs": args.ribs, "top_curve": top_curve_cls}
+    if args.sections is not None:
+        build_kwargs["n_sections"] = args.sections
+    sections, ribs = build_bowl_ribs(lute, **build_kwargs)
 
     mold_sections = None
     if args.build_molds or args.step_out is not None or args.plot2d:

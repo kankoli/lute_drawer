@@ -15,7 +15,7 @@ def build_bowl_ribs(
     lute,
     *,
     n_ribs: int = 13,
-    n_sections: int = 200,
+    n_sections: int = 300,
     top_curve: type[TopCurve] = SimpleAmplitudeCurve,
 ) -> tuple[list[Section], List[np.ndarray]]:
     """Return sampled sections and rib polylines between neck joint and tail."""
