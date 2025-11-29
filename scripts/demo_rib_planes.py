@@ -20,6 +20,7 @@ from lute_bowl.rib_form_builder import (
     build_rib_surfaces,
     find_rib_side_planes,
     measure_rib_plane_deviation,
+    project_points_to_plane,
 )
 from lute_bowl.top_curves import TopCurve
 from plotting.ribs import (
@@ -53,7 +54,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Sections along the spine (omit to use build_bowl_ribs default).",
     )
-    parser.add_argument("--rib-index", type=int, default=7, help="Rib index (1-based) to visualize")
+    parser.add_argument(
+        "--rib-index",
+        type=int,
+        default=None,
+        help="Rib index (1-based) to visualize; omit to export all ribs.",
+    )
     parser.add_argument("--title", default=None, help="Optional Matplotlib title override")
     parser.add_argument(
         "--plane-png",
@@ -69,13 +75,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _build_output_path(kind: str, lute_name: str, rib_count: int, rib_index: int, curve_name: str) -> Path:
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M")
+def _build_output_path(
+    kind: str,
+    lute_name: str,
+    rib_count: int,
+    rib_index: int,
+    curve_name: str,
+    *,
+    timestamp: str | None = None,
+    stamp_in_filename: bool = True,
+) -> Path:
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M")
     safe_curve = curve_name.replace(".", "-")
-    name = f"{timestamp}_{kind}_{lute_name}_{rib_count}_index{rib_index}_{safe_curve}.png"
+    parts = []
+    if stamp_in_filename:
+        parts.append(timestamp)
+    parts.extend([kind, lute_name, str(rib_count), f"index{rib_index}", safe_curve])
+    name = "_".join(parts) + ".png"
     out_dir = Path("output") / "rib_planes"
+    if not stamp_in_filename:
+        out_dir = out_dir / timestamp
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir / name
+
+
+def _project_outline_mm(outline: np.ndarray, plane, unit_scale: float) -> np.ndarray:
+    projected = project_points_to_plane(np.asarray(outline, dtype=float), plane)
+    long_coords = projected @ plane.long_direction
+    height_coords = projected @ plane.height_direction
+    return np.column_stack((long_coords, height_coords)) * unit_scale
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,29 +114,23 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(curve_cls, type) or not issubclass(curve_cls, TopCurve):
         raise TypeError("curve must reference a TopCurve subclass")
 
+    PAD_MM = 20.0
+
     lute = lute_cls()
     unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
     build_kwargs = {"n_ribs": args.ribs, "top_curve": curve_cls}
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
     _, rib_outlines = rib_builder.build_bowl_ribs(lute, **build_kwargs)
-    surfaces = build_rib_surfaces(rib_outlines=rib_outlines, rib_index=args.rib_index)
+
+    rib_targets: list[int] | None = None if args.rib_index is None else [args.rib_index]
+    surfaces = build_rib_surfaces(rib_outlines=rib_outlines, rib_index=rib_targets)
     if not surfaces:
-        raise RuntimeError(f"No surfaces returned for rib index {args.rib_index}")
-    rib_idx, quads = surfaces[0]
-    outlines = (
-        np.asarray(rib_outlines[rib_idx - 1], dtype=float),
-        np.asarray(rib_outlines[rib_idx], dtype=float),
-    )
+        raise RuntimeError("No surfaces returned for requested rib indices")
+
     gap_value = None
     if args.plane_gap_mm is not None and args.plane_gap_mm > 0:
         gap_value = args.plane_gap_mm
-    planes = find_rib_side_planes(
-        rib_outlines=rib_outlines,
-        rib_index=rib_idx,
-        plane_gap_mm=gap_value,
-        unit_scale=unit_scale,
-    )
 
     if all_rib_surfaces_convex(
         rib_outlines=rib_outlines,
@@ -116,41 +139,97 @@ def main(argv: list[str] | None = None) -> int:
     ):
         print("all convex")
 
-    curve_label = f"{curve_cls.__module__}.{curve_cls.__name__}"
-    if args.plane_png:
-        plane_path = _build_output_path("planes", type(lute).__name__, args.ribs, rib_idx, curve_label)
-        save_plane_projection_png(
-            plane_path,
+    curve_label = f"{curve_cls.__name__}"
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M") if args.rib_index is None else None
+    saved_paths: list[tuple[Path, Path]] = []
+
+    # Precompute outlines/planes and max frame size for consistent scaling.
+    rib_data: list[tuple[int, tuple[np.ndarray, np.ndarray], np.ndarray, np.ndarray]] = []
+    max_frame_w = 0.0
+    max_frame_h = 0.0
+
+    for rib_idx, quads in surfaces:
+        outlines = (
+            np.asarray(rib_outlines[rib_idx - 1], dtype=float),
+            np.asarray(rib_outlines[rib_idx], dtype=float),
+        )
+        planes = find_rib_side_planes(
+            rib_outlines=rib_outlines,
+            rib_index=rib_idx,
+            plane_gap_mm=gap_value,
+            unit_scale=unit_scale,
+        )
+
+        for plane, outline in zip(planes[:2], outlines, strict=False):
+            if plane is None:
+                continue
+            coords_outline = _project_outline_mm(outline, plane, unit_scale)
+            plane_coords = _project_outline_mm(plane.corners, plane, unit_scale)
+            combined = np.vstack([coords_outline, plane_coords])
+            x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
+            y_min, y_max = combined[:, 1].min(), combined[:, 1].max()
+            width_mm = x_max - x_min
+            height_mm = y_max - y_min
+            max_frame_w = max(max_frame_w, width_mm + 2 * PAD_MM)
+            max_frame_h = max(max_frame_h, height_mm + 2 * PAD_MM)
+
+        rib_data.append((rib_idx, outlines, planes, quads))
+
+    frame_size_mm = (max_frame_w, max_frame_h)
+
+    for rib_idx, outlines, planes, quads in rib_data:
+        if args.plane_png:
+            plane_path = _build_output_path(
+                "planes",
+                type(lute).__name__,
+                args.ribs,
+                rib_idx,
+                curve_label,
+                timestamp=timestamp,
+                stamp_in_filename=args.rib_index is not None,
+            )
+            left_path, right_path = save_plane_projection_png(
+                plane_path,
+                outlines,
+                planes,
+                unit_scale=unit_scale,
+                title=f"{type(lute).__name__} Rib {rib_idx} Planes",
+                frame_size_mm=frame_size_mm,
+                pad_mm=PAD_MM,
+            )
+            saved_paths.append((left_path, right_path))
+
+        deviation = measure_rib_plane_deviation(
+            rib_outlines=rib_outlines,
+            rib_index=rib_idx,
+            plane_gap_mm=gap_value,
+            unit_scale=unit_scale,
+        )
+        to_mm = unit_scale
+        if deviation.long_deltas.size:
+            long_stats = deviation.long_deltas * to_mm
+            height_stats = deviation.height_deltas * to_mm
+            print(
+                f"Rib {rib_idx} plane deviation — long axis max {long_stats.max():.3f} mm, "
+                f"height axis max {height_stats.max():.3f} mm"
+            )
+
+        plot_rib_surface_with_planes(
+            rib_idx,
+            quads,
             outlines,
             planes,
-            unit_scale=unit_scale,
-            title=f"{type(lute).__name__} Rib {rib_idx} Planes",
-        )
-        print(f"Plane projection PNG saved to {plane_path}")
-
-    deviation = measure_rib_plane_deviation(
-        rib_outlines=rib_outlines,
-        rib_index=rib_idx,
-        plane_gap_mm=gap_value,
-        unit_scale=unit_scale,
-    )
-    to_mm = unit_scale
-    if deviation.long_deltas.size:
-        long_stats = deviation.long_deltas * to_mm
-        height_stats = deviation.height_deltas * to_mm
-        print(
-            f"Rib {rib_idx} plane deviation — long axis max {long_stats.max():.3f} mm, "
-            f"height axis max {height_stats.max():.3f} mm"
+            title=args.title,
+            lute_name=type(lute).__name__,
         )
 
-    plot_rib_surface_with_planes(
-        rib_idx,
-        quads,
-        outlines,
-        planes,
-        title=args.title,
-        lute_name=type(lute).__name__,
-    )
+    if args.plane_png and saved_paths:
+        if args.rib_index is None:
+            folder = saved_paths[0][0].parent
+            print(f"Plane projection PNGs saved under {folder}")
+        else:
+            left_path, right_path = saved_paths[0]
+            print(f"Plane projection PNGs saved to {left_path} and {right_path}")
     return 0
 
 

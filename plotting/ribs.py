@@ -1,6 +1,8 @@
 """Rib-specific plotting and export helpers."""
 from __future__ import annotations
 
+import math
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -178,33 +180,184 @@ def save_plane_projection_png(
     unit_scale: float,
     dpi: int = 300,
     title: str | None = None,
-) -> Path:
-    path = Path(output_path)
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-    plane_order = [p for p in planes[:2]]
-    labels = {"negative": "Plane A", "positive": "Plane B"}
+    frame_size_mm: tuple[float, float] | None = None,
+    pad_mm: float = 20.0,
+) -> tuple[Path, Path]:
+    """Save each rib-side plane projection to its own PNG.
 
-    for ax, plane, outline in zip(axes, plane_order, outline_pair, strict=False):
+    Returns (left_path, right_path); the left panel corresponds to the first
+    outline in `outline_pair`, which is the lower-index rib outline."""
+
+    MM_PER_INCH = 25.4
+    GRID_MM = 50.0
+    MIN_PANEL_IN = 2.0
+    LABEL_CLEARANCE_MM = 2.0
+    LABEL_OFFSET_FRAC = 0.15
+
+    path = Path(output_path)
+    plane_order = [p for p in planes[:2]]
+
+    def _side_path(base: Path, side: str) -> Path:
+        stem = base.stem
+        match = re.search(r"(index\d+)", stem)
+        if match:
+            tagged = stem.replace(match.group(1), f"{match.group(1)}_{side}", 1)
+        else:
+            tagged = f"{stem}_{side}"
+        return base.with_name(f"{tagged}{base.suffix}")
+
+    rib_idx = getattr(planes[0], "rib_index", None) if planes else None
+    panel_labels = [
+        f"Rib {rib_idx}, left" if rib_idx is not None else "Left",
+        f"Rib {rib_idx}, right" if rib_idx is not None else "Right",
+    ]
+
+    panel_data: list[dict | None] = []
+    for plane, outline in zip(plane_order, outline_pair, strict=False):
         if plane is None:
-            ax.axis("off")
+            panel_data.append(None)
             continue
         coords_outline = _project_to_plane_coords(outline, plane, unit_scale)
         plane_coords = _project_to_plane_coords(plane.corners, plane, unit_scale)
-        poly = plt.Polygon(plane_coords, closed=True, facecolor="#f5deb3", edgecolor="#8a6b2f", alpha=0.35)
-        ax.add_patch(poly)
-        ax.plot(coords_outline[:, 0], coords_outline[:, 1], color="#224466", lw=1.5)
-        ax.set_aspect("equal", adjustable="box")
-        ax.set_xlabel("Long axis (mm)")
-        ax.set_ylabel("Height (mm)")
-        ax.set_title(labels.get(plane.side, "Plane"))
-        _add_scale_bar(ax)
+        combined = np.vstack([coords_outline, plane_coords])
+        x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
+        y_min, y_max = combined[:, 1].min(), combined[:, 1].max()
+        xlim = (x_min - pad_mm, x_max + pad_mm)
+        ylim = (y_min - pad_mm, y_max + pad_mm)
+        panel_data.append(
+            {
+                "plane": plane,
+                "outline": coords_outline,
+                "plane_coords": plane_coords,
+                "xlim": xlim,
+                "ylim": ylim,
+                "width_mm": xlim[1] - xlim[0],
+                "height_mm": ylim[1] - ylim[0],
+                "x_min": x_min,
+                "y_max": y_max,
+            }
+        )
 
-    if title:
-        fig.suptitle(title)
-    fig.tight_layout()
-    fig.savefig(path, dpi=dpi)
-    plt.close(fig)
-    return path
+    paths = (_side_path(path, "left"), _side_path(path, "right"))
+
+    for panel, side_path, panel_label in zip(panel_data, paths, panel_labels, strict=False):
+        if panel is None:
+            continue
+
+        frame_w_mm = frame_size_mm[0] if frame_size_mm else panel["width_mm"]
+        frame_h_mm = frame_size_mm[1] if frame_size_mm else panel["height_mm"]
+        frame_w_mm = max(frame_w_mm, MIN_PANEL_IN * MM_PER_INCH)
+        frame_h_mm = max(frame_h_mm, MIN_PANEL_IN * MM_PER_INCH)
+
+        # Translate so left edge is at pad_mm and top edge at frame_h_mm - pad_mm.
+        shift_x = pad_mm - panel["x_min"]
+        shift_y = frame_h_mm - pad_mm - panel["y_max"]
+        coords_outline = panel["outline"] + np.array([shift_x, shift_y])
+        plane_coords = panel["plane_coords"] + np.array([shift_x, shift_y])
+
+        width_in = frame_w_mm / MM_PER_INCH
+        height_in = frame_h_mm / MM_PER_INCH
+        fig, ax = plt.subplots(figsize=(width_in, height_in))
+
+        poly = plt.Polygon(
+            plane_coords,
+            closed=True,
+            facecolor="none",
+            edgecolor="#8a6b2f",
+            linewidth=0.4,
+        )
+        ax.add_patch(poly)
+        ax.plot(coords_outline[:, 0], coords_outline[:, 1], color="#224466", lw=0.35)
+
+        xlim = (0.0, frame_w_mm)
+        ylim = (0.0, frame_h_mm)
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_aspect("equal", adjustable="box")
+
+        # 5 cm grid (50 mm)
+        x_ticks = np.arange(
+            0.0,
+            math.ceil(xlim[1] / GRID_MM) * GRID_MM + GRID_MM,
+            GRID_MM,
+        )
+        y_ticks = np.arange(
+            0.0,
+            math.ceil(ylim[1] / GRID_MM) * GRID_MM + GRID_MM,
+            GRID_MM,
+        )
+        ax.set_xticks(x_ticks)
+        ax.set_yticks(y_ticks)
+        ax.grid(True, which="major", linestyle="--", color="0.85", linewidth=0.4)
+        ax.tick_params(labelbottom=False, labelleft=False, length=0)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        # Place panel label away from outlines and grid centers
+        span_x = xlim[1] - xlim[0]
+        span_y = ylim[1] - ylim[0]
+        outline_bb = (
+            coords_outline[:, 0].min(),
+            coords_outline[:, 0].max(),
+            coords_outline[:, 1].min(),
+            coords_outline[:, 1].max(),
+        )
+        candidates = [
+            (xlim[0] + 0.08 * span_x, ylim[1] - 0.08 * span_y),
+            (xlim[0] + 0.08 * span_x, ylim[0] + 0.08 * span_y),
+            (xlim[0] + 0.5 * span_x, ylim[0] + 0.08 * span_y),
+        ]
+
+        def _in_outline(pt):
+            x, y = pt
+            return outline_bb[0] <= x <= outline_bb[1] and outline_bb[2] <= y <= outline_bb[3]
+
+        label_pos = next((pt for pt in candidates if not _in_outline(pt)), candidates[-1])
+        ax.text(
+            label_pos[0],
+            label_pos[1],
+            panel_label,
+            ha="left",
+            va="center",
+            fontsize=10,
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.7, "pad": 2.0},
+        )
+
+        # Repeat annotation inside each grid square, tucked near corners
+        for x0, x1 in zip(x_ticks[:-1], x_ticks[1:], strict=False):
+            for y0, y1 in zip(y_ticks[:-1], y_ticks[1:], strict=False):
+                span_x = x1 - x0
+                span_y = y1 - y0
+                if span_x < GRID_MM - 1e-6 or span_y < GRID_MM - 1e-6:
+                    continue
+                candidates_cell = [
+                    (x0 + LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
+                    (x0 + LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
+                    (x1 - LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
+                    (x1 - LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
+                ]
+                for pt in candidates_cell:
+                    if _min_distance_to_polyline(pt, coords_outline) >= LABEL_CLEARANCE_MM:
+                        ax.text(
+                            pt[0],
+                            pt[1],
+                            panel_label,
+                            ha="left",
+                            va="center",
+                            fontsize=7,
+                            color="0.25",
+                            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.6, "pad": 1.5},
+                        )
+                        break
+
+        if title:
+            ax.set_title(title, fontsize=11, pad=6)
+
+        fig.tight_layout()
+        fig.savefig(side_path, dpi=dpi)
+        plt.close(fig)
+
+    return paths
 
 
 def _project_to_plane_coords(points: np.ndarray, plane: RibSidePlane, unit_scale: float) -> np.ndarray:
@@ -214,21 +367,30 @@ def _project_to_plane_coords(points: np.ndarray, plane: RibSidePlane, unit_scale
     return np.column_stack((long_coords, height_coords)) * unit_scale
 
 
-def _add_scale_bar(ax, length_mm: float = 100.0) -> None:
-    if length_mm <= 0:
-        return
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    x_start = xlim[0] + 0.05 * (xlim[1] - xlim[0])
-    y_start = ylim[0] - 0.08 * (ylim[1] - ylim[0])
-    ax.plot([x_start, x_start + length_mm], [y_start, y_start], color="k", lw=2.0)
-    ax.text(
-        x_start + length_mm / 2,
-        y_start - 0.02 * (ylim[1] - ylim[0]),
-        f"{int(length_mm)} mm",
-        ha="center",
-        va="top",
-    )
+def _min_distance_to_polyline(point: tuple[float, float], polyline: np.ndarray) -> float:
+    """Return minimum distance from a 2D point to a polyline."""
+
+    if polyline.size == 0:
+        return float("inf")
+
+    p = np.asarray(point, dtype=float)
+    line = np.asarray(polyline, dtype=float)
+    min_dist = float("inf")
+
+    for a, b in zip(line[:-1], line[1:], strict=False):
+        ab = b - a
+        denom = float(np.dot(ab, ab))
+        if denom <= 1e-12:
+            dist = float(np.linalg.norm(p - a))
+            min_dist = min(min_dist, dist)
+            continue
+        t = float(np.dot(p - a, ab) / denom)
+        t = max(0.0, min(1.0, t))
+        closest = a + t * ab
+        dist = float(np.linalg.norm(p - closest))
+        min_dist = min(min_dist, dist)
+
+    return min_dist
 
 
 __all__ = [
