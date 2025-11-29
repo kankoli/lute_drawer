@@ -207,15 +207,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"height axis max {height_stats.max():.3f} mm"
             )
 
-        plot_rib_surface_with_planes(
-            rib_idx,
-            quads,
-            outlines,
-            planes,
-            title=args.title,
-            lute_name=type(lute).__name__,
-            panel_projections=panel_projections,
-        )
+        if not args.plane_png:
+            plot_rib_surface_with_planes(
+                rib_idx,
+                quads,
+                outlines,
+                planes,
+                title=args.title,
+                lute_name=type(lute).__name__,
+                panel_projections=panel_projections,
+            )
 
     if args.plane_png and saved_paths:
         if args.rib_index is None:
