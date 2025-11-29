@@ -20,12 +20,13 @@ from lute_bowl.rib_form_builder import (
     build_rib_surfaces,
     find_rib_side_planes,
     measure_rib_plane_deviation,
-    project_points_to_plane,
 )
 from lute_bowl.top_curves import TopCurve
 from plotting.ribs import (
     plot_rib_surface_with_planes,
     save_plane_projection_png,
+    build_panel_projections,
+    compute_panel_frame,
 )
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
@@ -100,13 +101,6 @@ def _build_output_path(
     return out_dir / name
 
 
-def _project_outline_mm(outline: np.ndarray, plane, unit_scale: float) -> np.ndarray:
-    projected = project_points_to_plane(np.asarray(outline, dtype=float), plane)
-    long_coords = projected @ plane.long_direction
-    height_coords = projected @ plane.height_direction
-    return np.column_stack((long_coords, height_coords)) * unit_scale
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     lute_cls = _resolve_class(args.lute)
@@ -115,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         raise TypeError("curve must reference a TopCurve subclass")
 
     PAD_MM = 20.0
+    MIN_PANEL_IN = 2.0
+    MM_PER_INCH = 25.4
 
     lute = lute_cls()
     unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
@@ -143,8 +139,10 @@ def main(argv: list[str] | None = None) -> int:
     timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M") if args.rib_index is None else None
     saved_paths: list[tuple[Path, Path]] = []
 
-    # Precompute outlines/planes and max frame size for consistent scaling.
-    rib_data: list[tuple[int, tuple[np.ndarray, np.ndarray], np.ndarray, np.ndarray]] = []
+    # Precompute outlines/planes/projections and max frame size for consistent scaling.
+    rib_data: list[
+        tuple[int, tuple[np.ndarray, np.ndarray], np.ndarray, np.ndarray, list]
+    ] = []
     max_frame_w = 0.0
     max_frame_h = 0.0
 
@@ -160,24 +158,18 @@ def main(argv: list[str] | None = None) -> int:
             unit_scale=unit_scale,
         )
 
-        for plane, outline in zip(planes[:2], outlines, strict=False):
-            if plane is None:
-                continue
-            coords_outline = _project_outline_mm(outline, plane, unit_scale)
-            plane_coords = _project_outline_mm(plane.corners, plane, unit_scale)
-            combined = np.vstack([coords_outline, plane_coords])
-            x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
-            y_min, y_max = combined[:, 1].min(), combined[:, 1].max()
-            width_mm = x_max - x_min
-            height_mm = y_max - y_min
-            max_frame_w = max(max_frame_w, width_mm + 2 * PAD_MM)
-            max_frame_h = max(max_frame_h, height_mm + 2 * PAD_MM)
+        panel_projections = build_panel_projections(outlines, planes, unit_scale)
+        frame_w, frame_h = compute_panel_frame(
+            panel_projections, PAD_MM, MIN_PANEL_IN, MM_PER_INCH, override=None
+        )
+        max_frame_w = max(max_frame_w, frame_w)
+        max_frame_h = max(max_frame_h, frame_h)
 
-        rib_data.append((rib_idx, outlines, planes, quads))
+        rib_data.append((rib_idx, outlines, planes, quads, panel_projections))
 
     frame_size_mm = (max_frame_w, max_frame_h)
 
-    for rib_idx, outlines, planes, quads in rib_data:
+    for rib_idx, outlines, planes, quads, panel_projections in rib_data:
         if args.plane_png:
             plane_path = _build_output_path(
                 "planes",
@@ -196,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                 title=f"{type(lute).__name__} Rib {rib_idx} Planes",
                 frame_size_mm=frame_size_mm,
                 pad_mm=PAD_MM,
+                panel_projections=panel_projections,
             )
             saved_paths.append((left_path, right_path))
 
@@ -221,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             planes,
             title=args.title,
             lute_name=type(lute).__name__,
+            panel_projections=panel_projections,
         )
 
     if args.plane_png and saved_paths:

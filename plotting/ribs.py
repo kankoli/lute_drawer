@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -80,6 +81,7 @@ def plot_rib_surface_with_planes(
     *,
     title: str | None = None,
     lute_name: str | None = None,
+    panel_projections: Sequence[PanelProjection | None] | None = None,
 ):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
@@ -112,17 +114,21 @@ def plot_rib_surface_with_planes(
         patch.set_edgecolor(color)
         ax.add_collection3d(patch)
 
-    outline_planes: list[tuple[np.ndarray, RibSidePlane | None, str]] = [
-        (outline_pair[0], neg_plane, plane_colors.get("negative", "#c48f00")),
-        (outline_pair[1], pos_plane, plane_colors.get("positive", "#c48f00")),
+    if panel_projections is None:
+        panel_projections = build_panel_projections(outline_pair, planes, unit_scale=1.0)
+
+    outline_planes: list[tuple[np.ndarray, RibSidePlane | None, str, np.ndarray]] = [
+        (outline_pair[0], neg_plane, plane_colors.get("negative", "#c48f00"), None),
+        (outline_pair[1], pos_plane, plane_colors.get("positive", "#c48f00"), None),
     ]
 
     projected_paths: list[np.ndarray] = []
-    for outline, plane, color in outline_planes:
-        if plane is None or outline.size == 0:
+    for outline_entry, proj_data in zip(outline_planes, panel_projections, strict=False):
+        outline, plane, color, _ = outline_entry
+        if proj_data is None or plane is None or outline.size == 0:
             projected_paths.append(np.empty((0, 3)))
             continue
-        projected = project_points_to_plane(outline, plane)
+        projected = proj_data.projected_3d
         projected_paths.append(projected)
         ax.plot(projected[:, 0], projected[:, 1], projected[:, 2], color=color, lw=1.2, ls="--")
         for point, proj in zip(outline, projected, strict=False):
@@ -172,6 +178,73 @@ def plot_rib_surface_with_planes(
     plt.show()
 
 
+@dataclass
+class PanelProjection:
+    plane: RibSidePlane
+    outline_3d: np.ndarray
+    projected_3d: np.ndarray
+    plane_outline_2d: np.ndarray
+    plane_corners_2d: np.ndarray
+    bbox_2d: tuple[float, float, float, float]
+
+
+def build_panel_projections(
+    outline_pair: Sequence[np.ndarray],
+    planes: Sequence[RibSidePlane],
+    unit_scale: float,
+) -> list[PanelProjection | None]:
+    panel_projections: list[PanelProjection | None] = []
+    plane_order = [p for p in planes[:2]]
+
+    for plane, outline in zip(plane_order, outline_pair, strict=False):
+        if plane is None:
+            panel_projections.append(None)
+            continue
+        outline_arr = np.asarray(outline, dtype=float)
+        projected_3d = project_points_to_plane(outline_arr, plane)
+        plane_outline = _project_to_plane_coords(outline_arr, plane, unit_scale)
+        plane_corners = _project_to_plane_coords(plane.corners, plane, unit_scale)
+        combined = np.vstack([plane_outline, plane_corners])
+        x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
+        y_min, y_max = combined[:, 1].min(), combined[:, 1].max()
+        panel_projections.append(
+            PanelProjection(
+                plane=plane,
+                outline_3d=outline_arr,
+                projected_3d=projected_3d,
+                plane_outline_2d=plane_outline,
+                plane_corners_2d=plane_corners,
+                bbox_2d=(x_min, x_max, y_min, y_max),
+            )
+        )
+    return panel_projections
+
+
+def compute_panel_frame(
+    panel_projections: Sequence[PanelProjection | None],
+    pad_mm: float,
+    min_panel_in: float,
+    mm_per_inch: float,
+    override: tuple[float, float] | None,
+) -> tuple[float, float]:
+    if override is not None:
+        return override
+
+    max_w = 0.0
+    max_h = 0.0
+    for proj in panel_projections:
+        if proj is None:
+            continue
+        x_min, x_max, y_min, y_max = proj.bbox_2d
+        max_w = max(max_w, (x_max - x_min) + 2 * pad_mm)
+        max_h = max(max_h, (y_max - y_min) + 2 * pad_mm)
+
+    min_mm = min_panel_in * mm_per_inch
+    max_w = max(max_w, min_mm)
+    max_h = max(max_h, min_mm)
+    return (max_w, max_h)
+
+
 def save_plane_projection_png(
     output_path: str | Path,
     outline_pair: Sequence[np.ndarray],
@@ -182,6 +255,7 @@ def save_plane_projection_png(
     title: str | None = None,
     frame_size_mm: tuple[float, float] | None = None,
     pad_mm: float = 20.0,
+    panel_projections: Sequence[PanelProjection | None] | None = None,
 ) -> tuple[Path, Path]:
     """Save each rib-side plane projection to its own PNG.
 
@@ -195,7 +269,6 @@ def save_plane_projection_png(
     LABEL_OFFSET_FRAC = 0.15
 
     path = Path(output_path)
-    plane_order = [p for p in planes[:2]]
 
     def _side_path(base: Path, side: str) -> Path:
         stem = base.stem
@@ -212,51 +285,26 @@ def save_plane_projection_png(
         f"Rib {rib_idx}, right" if rib_idx is not None else "Right",
     ]
 
-    panel_data: list[dict | None] = []
-    for plane, outline in zip(plane_order, outline_pair, strict=False):
-        if plane is None:
-            panel_data.append(None)
-            continue
-        coords_outline = _project_to_plane_coords(outline, plane, unit_scale)
-        plane_coords = _project_to_plane_coords(plane.corners, plane, unit_scale)
-        combined = np.vstack([coords_outline, plane_coords])
-        x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
-        y_min, y_max = combined[:, 1].min(), combined[:, 1].max()
-        xlim = (x_min - pad_mm, x_max + pad_mm)
-        ylim = (y_min - pad_mm, y_max + pad_mm)
-        panel_data.append(
-            {
-                "plane": plane,
-                "outline": coords_outline,
-                "plane_coords": plane_coords,
-                "xlim": xlim,
-                "ylim": ylim,
-                "width_mm": xlim[1] - xlim[0],
-                "height_mm": ylim[1] - ylim[0],
-                "x_min": x_min,
-                "y_max": y_max,
-            }
-        )
+    if panel_projections is None:
+        panel_projections = build_panel_projections(outline_pair, planes, unit_scale)
 
     paths = (_side_path(path, "left"), _side_path(path, "right"))
 
-    for panel, side_path, panel_label in zip(panel_data, paths, panel_labels, strict=False):
-        if panel is None:
-            continue
+    frame_size_mm = compute_panel_frame(panel_projections, pad_mm, MIN_PANEL_IN, MM_PER_INCH, frame_size_mm)
 
-        frame_w_mm = frame_size_mm[0] if frame_size_mm else panel["width_mm"]
-        frame_h_mm = frame_size_mm[1] if frame_size_mm else panel["height_mm"]
-        frame_w_mm = max(frame_w_mm, MIN_PANEL_IN * MM_PER_INCH)
-        frame_h_mm = max(frame_h_mm, MIN_PANEL_IN * MM_PER_INCH)
+    for proj, side_path, panel_label in zip(panel_projections, paths, panel_labels, strict=False):
+        if proj is None:
+            continue
+        x_min, x_max, y_min, y_max = proj.bbox_2d
 
         # Translate so left edge is at pad_mm and top edge at frame_h_mm - pad_mm.
-        shift_x = pad_mm - panel["x_min"]
-        shift_y = frame_h_mm - pad_mm - panel["y_max"]
-        coords_outline = panel["outline"] + np.array([shift_x, shift_y])
-        plane_coords = panel["plane_coords"] + np.array([shift_x, shift_y])
+        shift_x = pad_mm - x_min
+        shift_y = frame_size_mm[1] - pad_mm - y_max
+        coords_outline = proj.plane_outline_2d + np.array([shift_x, shift_y])
+        plane_coords = proj.plane_corners_2d + np.array([shift_x, shift_y])
 
-        width_in = frame_w_mm / MM_PER_INCH
-        height_in = frame_h_mm / MM_PER_INCH
+        width_in = frame_size_mm[0] / MM_PER_INCH
+        height_in = frame_size_mm[1] / MM_PER_INCH
         fig, ax = plt.subplots(figsize=(width_in, height_in))
 
         poly = plt.Polygon(
@@ -269,8 +317,8 @@ def save_plane_projection_png(
         ax.add_patch(poly)
         ax.plot(coords_outline[:, 0], coords_outline[:, 1], color="#224466", lw=0.35)
 
-        xlim = (0.0, frame_w_mm)
-        ylim = (0.0, frame_h_mm)
+        xlim = (0.0, frame_size_mm[0])
+        ylim = (0.0, frame_size_mm[1])
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_aspect("equal", adjustable="box")
@@ -397,4 +445,7 @@ __all__ = [
     "plot_rib_surfaces",
     "plot_rib_surface_with_planes",
     "save_plane_projection_png",
+    "build_panel_projections",
+    "compute_panel_frame",
+    "PanelProjection",
 ]
