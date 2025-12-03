@@ -306,10 +306,6 @@ class TurkishOud2_3(TurkishOud2):
     lower_arc_builder = StepCircleBuilder(0.25, 1.0)
 
 
-class TurkishOud2_4(TurkishOud2):
-    lower_arc_builder = SimpleBlend()
-
-
 class TurkishOud(LuteSoundboard):
     top_arc = TopArcType2()
     neck_profile = NeckQuartered()
