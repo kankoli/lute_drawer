@@ -315,6 +315,14 @@ class TurkishOud(LuteSoundboard):
     unit_mm = 366 / 4
 
     def _make_spine_points(self) -> None:
+        """ Some sources state that the width of the Turkish oud
+        soundboard (4 regular unit) should be 3/4th of the segment from
+        neck-joint to form-bottom which is then divided into 5 and
+        placing the bridge at 1 unit and the soundhole at 3 units (half-way)
+
+        So, 4 regular units equals 3 /4 (5 vertical units), which means
+        1 vertical unit is equal to 16/15 regular unit
+        """
         self.vertical_unit = 16 * self.unit / 15
         soundhole_center = self.geo.translate_x(self.point_neck_joint, 2 * self.vertical_unit)
         self._soundhole_center = soundhole_center
