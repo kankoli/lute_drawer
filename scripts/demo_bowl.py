@@ -35,12 +35,7 @@ def _resolve_class(path: str):
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "lute",
-        nargs="?",
-        default=DEFAULT_LUTE,
-        help=f"Fully qualified lute class (default: {DEFAULT_LUTE})",
-    )
+    parser.add_argument("--lute", default=DEFAULT_LUTE, help=f"Default: {DEFAULT_LUTE}")
     parser.add_argument(
         "--top-curve",
         default=DEFAULT_CURVE,
