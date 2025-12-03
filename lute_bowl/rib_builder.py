@@ -17,6 +17,7 @@ def build_bowl_ribs(
     n_ribs: int = 13,
     n_sections: int = 300,
     top_curve: type[TopCurve] = SimpleAmplitudeCurve,
+    skirt_span: float = 0.0,
 ) -> tuple[list[Section], List[np.ndarray]]:
     """Return sampled sections and rib polylines between neck joint and tail."""
     if n_sections < 2:
@@ -35,7 +36,16 @@ def build_bowl_ribs(
     if start_x >= end_x - _EPS:
         raise ValueError("End blocks overlap the bowl span; adjust block sizes.")
 
+    skirt_span = max(0.0, float(skirt_span))
+    span = end_x - start_x
+    include_eye = skirt_span > _EPS and skirt_span < span - _EPS and n_sections >= 2
+    eye_x = end_x - skirt_span if include_eye else None
+
     xs = np.linspace(start_x, end_x, n_sections)
+    if include_eye and eye_x is not None and not np.any(np.isclose(xs, eye_x, atol=1e-8)):
+        xs = np.append(xs, eye_x)
+    xs = np.unique(xs)
+    xs.sort()
     sections: list[Section] = []
 
     try:
@@ -66,7 +76,16 @@ def build_bowl_ribs(
         raise RuntimeError(f"No valid section geometry at X={float(end_x):.6f}")
     sections.append(end_section)
 
-    ribs = _derive_planar_ribs(lute, sections, n_ribs, start_x, end_x)
+    ribs = _derive_planar_ribs(
+        lute,
+        sections,
+        n_ribs,
+        start_x,
+        end_x,
+        skirt_span=skirt_span,
+        z_top=z_top,
+        eye_x=eye_x,
+    )
 
     return sections, ribs
 

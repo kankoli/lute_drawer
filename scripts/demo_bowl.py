@@ -49,6 +49,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Number of planar section samples (omit to use build_bowl_ribs default).",
     )
     parser.add_argument(
+        "--skirt-span",
+        type=float,
+        default=0.0,
+        help="Distance from tail along spine where skirt ribs begin (units).",
+    )
+    parser.add_argument(
         "--show-section-circles",
         action="store_true",
         help="Draw section circle overlays when section count allows.",
@@ -126,6 +132,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     build_kwargs = {"n_ribs": args.ribs, "top_curve": top_curve_cls}
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
+    if args.skirt_span is not None:
+        build_kwargs["skirt_span"] = args.skirt_span
     sections, ribs = build_bowl_ribs(lute, **build_kwargs)
 
     mold_sections = None

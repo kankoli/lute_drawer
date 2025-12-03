@@ -284,14 +284,32 @@ def _derive_planar_ribs(
     n_ribs: int,
     x_start: float,
     x_end: float,
+    *,
+    skirt_span: float = 0.0,
+    z_top: Callable[[float], float] | None = None,
+    eye_x: float | None = None,
 ) -> List[np.ndarray]:
-    """Return rib polylines that lie in fixed planes to avoid twist."""
+    skirt_span = max(0.0, float(skirt_span))
+    span = x_end - x_start
+    has_skirts = skirt_span > _EPS and skirt_span < span - _EPS
+
+    if not has_skirts:
+        return _derive_planar_ribs_base(lute, sections, n_ribs, x_start, x_end)
+    if z_top is None:
+        raise ValueError("z_top callable required for skirt ribs.")
+
+    eye_x = eye_x if eye_x is not None else (x_end - skirt_span)
+    eye_x = min(max(eye_x, x_start), x_end)
+    return _derive_planar_ribs_skirt(lute, sections, n_ribs, x_start, x_end, eye_x, z_top)
+
+
+def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_start: float, x_end: float) -> List[np.ndarray]:
+    """Original rib construction without skirts."""
     if n_ribs < 1:
         raise ValueError("n_ribs must be at least 1.")
 
     rib_count = int(n_ribs) + 1
-    if rib_count < 2:
-        rib_count = 2
+    rib_count = max(rib_count, 2)
 
     radii = [float(section.radius) for section in sections]
     ref_idx = int(np.argmax(radii))
@@ -382,5 +400,143 @@ def _derive_planar_ribs(
             y = base_yz[0] + s * dy
             z = base_yz[1] + s * dz
             trace.append(np.array([x, y, z], dtype=float))
+
+    return [np.asarray(trace, dtype=float) for trace in ribs]
+
+
+def _derive_planar_ribs_skirt(
+    lute,
+    sections: Sequence[Section],
+    n_ribs: int,
+    x_start: float,
+    x_end: float,
+    eye_x: float,
+    z_top: Callable[[float], float],
+) -> List[np.ndarray]:
+    """Skirt ribs: interior ribs end at eye; skirts run to tail via straight segment."""
+    rib_count = int(n_ribs) + 1
+    rib_count = max(rib_count, 3)
+
+    def _section_at_x(target: float) -> Section:
+        for s in sections:
+            if abs(float(s.x) - target) <= 1e-8:
+                return s
+        raise ValueError(f"No section sampled at X={target:.6f}")
+
+    neck_section = _section_at_x(x_start)
+    eye_section = _section_at_x(eye_x)
+    if float(neck_section.radius) <= _EPS or float(eye_section.radius) <= _EPS:
+        raise ValueError("Neck or eye section radius must be positive for skirt ribs.")
+
+    theta_left, theta_right, _ = _section_angles(neck_section)
+    thetas = np.linspace(theta_left, theta_right, rib_count)
+
+    cy_neck, cz_neck = map(float, neck_section.center)
+    r_neck = float(neck_section.radius)
+    neck_points = [
+        np.array([x_start, cy_neck + r_neck * np.cos(theta), cz_neck + r_neck * np.sin(theta)], dtype=float)
+        for theta in thetas
+    ]
+
+    eye_point = _spine_point_xyz(lute, eye_x)
+    eye_point[2] = max(float(z_top(eye_x)), 0.0)
+    tail_point = _spine_point_xyz(lute, x_end)
+    skirt_indices = {0, rib_count - 1}
+
+    v1 = neck_points[1] - eye_point
+    v2 = neck_points[-2] - eye_point
+    eye_normal = np.cross(v1, v2)
+    norm_eye = np.linalg.norm(eye_normal)
+    if norm_eye <= _EPS:
+        raise ValueError("Eye plane is degenerate; adjust skirt span or geometry.")
+    eye_normal /= norm_eye
+
+    def _intersect_section_with_eye(section: Section) -> tuple[np.ndarray, np.ndarray]:
+        x = float(section.x)
+        cy, cz = map(float, section.center)
+        r = float(section.radius)
+        A = eye_normal[1] * r
+        B = eye_normal[2] * r
+        C = eye_normal[0] * (x - eye_point[0]) + eye_normal[1] * (cy - eye_point[1]) + eye_normal[2] * (
+            cz - eye_point[2]
+        )
+        R = math.hypot(A, B)
+        if R <= _EPS:
+            raise RuntimeError("Eye plane parallel to section circle.")
+        arg = -C / R
+        arg = max(-1.0, min(1.0, arg))
+        base = math.atan2(B, A)
+        delta = math.acos(arg)
+        t1 = base + delta
+        t2 = base - delta
+        p1 = np.array([x, cy + r * math.cos(t1), cz + r * math.sin(t1)], dtype=float)
+        p2 = np.array([x, cy + r * math.cos(t2), cz + r * math.sin(t2)], dtype=float)
+        pts = sorted([p1, p2], key=lambda p: p[1])
+        return pts[0], pts[1]
+
+    ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
+    anchors_yz: List[np.ndarray | None] = [None for _ in range(rib_count)]
+
+    for section in sections:
+        x = float(section.x)
+
+        if x > eye_x + 1e-9:
+            t_line = (x - eye_x) / max(x_end - eye_x, _EPS)
+            t_line = max(0.0, min(1.0, t_line))
+            for idx in range(rib_count):
+                if idx in skirt_indices:
+                    anchor = anchors_yz[idx] if anchors_yz[idx] is not None else np.array([eye_point[1], eye_point[2]])
+                    yz_end = np.array([tail_point[1], tail_point[2]], dtype=float)
+                    yz = anchor + t_line * (yz_end - anchor)
+                    ribs[idx].append(np.array([x, yz[0], yz[1]], dtype=float))
+                else:
+                    anchor = anchors_yz[idx]
+                    if anchor is None:
+                        raise RuntimeError("Missing eye anchor for interior rib.")
+                    ribs[idx].append(np.array([x, anchor[0], anchor[1]], dtype=float))
+            continue
+
+        if float(section.radius) <= _EPS:
+            yz = np.array([float(_spine_point_at_X(lute, x)), 0.0], dtype=float)
+            for idx in range(rib_count):
+                ribs[idx].append(np.array([x, yz[0], yz[1]], dtype=float))
+            continue
+
+        left_pt, right_pt = _intersect_section_with_eye(section)
+        cy, cz = map(float, section.center)
+        r = float(section.radius)
+        theta_left_sec = math.atan2(left_pt[2] - cz, left_pt[1] - cy)
+        theta_right_sec = math.atan2(right_pt[2] - cz, right_pt[1] - cy)
+        if theta_left_sec > theta_right_sec:
+            theta_left_sec, theta_right_sec = theta_right_sec, theta_left_sec
+
+        for idx in range(rib_count):
+            if idx == 0:
+                pt = left_pt
+            elif idx == rib_count - 1:
+                pt = right_pt
+            else:
+                t = idx / float(rib_count - 1)
+                theta = theta_left_sec + t * (theta_right_sec - theta_left_sec)
+                y = cy + r * math.cos(theta)
+                z = cz + r * math.sin(theta)
+                pt = np.array([x, y, z], dtype=float)
+            ribs[idx].append(pt)
+            if abs(x - eye_x) <= 1e-8:
+                anchors_yz[idx] = np.array([pt[1], pt[2]], dtype=float)
+
+    # Replace outermost ribs with soundboard outlines (projected on Z=0).
+    boundary_left: list[np.ndarray] = []
+    boundary_right: list[np.ndarray] = []
+    for section in sections:
+        hit = _extract_side_points_at_X(lute, section.x)
+        if hit is None:
+            raise RuntimeError(f"Failed to locate soundboard intersections at X={float(section.x):.6f}")
+        L, R, Xs = hit
+        boundary_left.append(np.array([float(Xs), float(L[1]), 0.0], dtype=float))
+        boundary_right.append(np.array([float(Xs), float(R[1]), 0.0], dtype=float))
+
+    ribs[0] = boundary_left
+    ribs[-1] = boundary_right
 
     return [np.asarray(trace, dtype=float) for trace in ribs]

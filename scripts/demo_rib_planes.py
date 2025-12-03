@@ -56,6 +56,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Sections along the spine (omit to use build_bowl_ribs default).",
     )
     parser.add_argument(
+        "--skirt-span",
+        type=float,
+        default=0.0,
+        help="Distance from tail along spine where skirt ribs begin (units).",
+    )
+    parser.add_argument(
         "--rib-index",
         type=int,
         default=None,
@@ -117,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     build_kwargs = {"n_ribs": args.ribs, "top_curve": curve_cls}
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
+    if args.skirt_span is not None:
+        build_kwargs["skirt_span"] = args.skirt_span
     _, rib_outlines = rib_builder.build_bowl_ribs(lute, **build_kwargs)
 
     rib_targets: list[int] | None = None if args.rib_index is None else [args.rib_index]
