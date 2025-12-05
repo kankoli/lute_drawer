@@ -238,7 +238,7 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
         warnings.warn(
             (
                 "Section circle center lies on or above the soundboard plane "
-                f"(X={Xs:.4f}); resulting mold may trap the bowl."
+                f"(X={Xs:.4f}, Yc={float(C_YZ[1]):.4f}); resulting mold may trap the bowl."
             ),
             RuntimeWarning,
         )

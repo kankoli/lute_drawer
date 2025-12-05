@@ -165,10 +165,10 @@ class SimpleAmplitudeCurve(SideProfilePerControlTopCurve):
 class DeepBackCurve(SideProfilePerControlTopCurve):
     PARAMETERS = SideProfileParameters(
         gammas={
-            "neck_joint": 1.35,
+            "neck_joint": 1.55,
             "soundhole_center": 1.20,
-            "form_center": 0.85,
-            "bridge": 0.85,
+            "form_center": 1.05,
+            "bridge": 1.05,
         },
         widths={
             "form_center": ("span_frac", 0.45),
@@ -177,7 +177,7 @@ class DeepBackCurve(SideProfilePerControlTopCurve):
             "neck_joint": ("span_frac", 0.25),
         },
         amplitude_mode="units",
-        amplitude_units=1.8,
+        amplitude_units=2.0,
     )
 
 
