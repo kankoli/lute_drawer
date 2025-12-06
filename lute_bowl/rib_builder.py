@@ -18,6 +18,7 @@ def build_bowl_ribs(
     n_sections: int = 300,
     top_curve: type[TopCurve] = SimpleAmplitudeCurve,
     skirt_span: float = 0.0,
+    division_mode: str = "angle",
 ) -> tuple[list[Section], List[np.ndarray]]:
     """Return sampled sections and rib polylines between neck joint and tail."""
     if n_sections < 2:
@@ -85,6 +86,7 @@ def build_bowl_ribs(
         skirt_span=skirt_span,
         z_top=z_top,
         eye_x=eye_x,
+        division_mode=division_mode,
     )
 
     return sections, ribs

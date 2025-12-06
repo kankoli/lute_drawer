@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Callable, Iterable, List, NamedTuple, Sequence
+from typing import Callable, List, Sequence
 
 import numpy as np
 import warnings
@@ -26,6 +26,7 @@ from .top_curves import (
     SimpleAmplitudeCurve,
     TopCurve,
 )
+from .section_curve import SectionCurve
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -35,40 +36,49 @@ _EX = np.array([1.0, 0.0, 0.0], dtype=float)
 _EPS = 1e-9
 
 
-class Section(NamedTuple):
+@dataclass(frozen=True)
+class Section:
     """Geometry for a single bowl slice."""
 
     x: float
-    center: np.ndarray
-    radius: float
-    apex: np.ndarray
+    curve: SectionCurve
+
+    @property
+    def center(self) -> np.ndarray:
+        return self.curve.center
+
+    @property
+    def radius(self) -> float:
+        return self.curve.radius
+
+    @property
+    def apex(self) -> np.ndarray:
+        return self.curve.apex
+
+    def __iter__(self):
+        yield self.x
+        yield self.center
+        yield self.radius
+        yield self.apex
+
+    def __len__(self):
+        return 4
+
+    def __getitem__(self, idx: int):
+        if idx == 0:
+            return self.x
+        if idx == 1:
+            return self.center
+        if idx == 2:
+            return self.radius
+        if idx == 3:
+            return self.apex
+        raise IndexError(idx)
 
 
 # ---------------------------------------------------------------------------
 # Soundboard sampling
 # ---------------------------------------------------------------------------
-
-
-def _circle_through_three_points_2d(P1, P2, P3):
-    """Circle through 3 points in the YZ-plane (inputs are 2D [Y,Z] coords)."""
-    P1 = np.asarray(P1, float)
-    P2 = np.asarray(P2, float)
-    P3 = np.asarray(P3, float)
-    mid12 = 0.5 * (P1 + P2)
-    mid13 = 0.5 * (P1 + P3)
-    d12 = P2 - P1
-    d13 = P3 - P1
-    area2 = d12[0] * d13[1] - d12[1] * d13[0]
-    if abs(area2) < 1e-12:
-        raise ValueError("Collinear points, no unique circle.")
-    n12 = np.array([-d12[1], d12[0]])
-    n13 = np.array([-d13[1], d13[0]])
-    A = np.column_stack([n12, -n13])
-    b = mid13 - mid12
-    t, _ = np.linalg.lstsq(A, b, rcond=None)[0]
-    C = mid12 + t * n12
-    r = float(np.linalg.norm(C - P1))
-    return C, r
 
 
 def _normalize_angle_deg(value: float) -> float:
@@ -216,7 +226,8 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
     if width <= 1e-6:
         apex = np.array([float(Y_apex), max(Z_apex, 0.0)], dtype=float)
         center = np.array([float(Y_apex), 0.0], dtype=float)
-        return Section(Xs, center, 0.0, apex)
+        curve = SectionCurve.degenerate(center, apex)
+        return Section(Xs, curve)
 
     if abs(Z_apex) < 1e-6:
         dist_bottom = abs(float(lute.form_bottom.x) - float(Xs))
@@ -228,21 +239,21 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
                 return None
         else:
             return None
-    apex = np.array([Y_apex, Z_apex])
-    C_YZ, r = _circle_through_three_points_2d(
-        np.array([float(L[1]), 0.0]),
-        np.array([float(R[1]), 0.0]),
+    apex = np.array([Y_apex, Z_apex], dtype=float)
+    curve = SectionCurve.from_span(
+        np.array([float(L[1]), 0.0], dtype=float),
+        np.array([float(R[1]), 0.0], dtype=float),
         apex,
     )
-    if float(C_YZ[1]) >= 0.0:
+    if float(curve.center[1]) >= 0.0:
         warnings.warn(
             (
                 "Section circle center lies on or above the soundboard plane "
-                f"(X={Xs:.4f}, Yc={float(C_YZ[1]):.4f}); resulting mold may trap the bowl."
+                f"(X={Xs:.4f}, Yc={float(curve.center[1]):.4f}); resulting mold may trap the bowl."
             ),
             RuntimeWarning,
         )
-    return Section(Xs, C_YZ, float(r), apex)
+    return Section(Xs, curve)
 
 # ---------------------------------------------------------------------------
 # Ribs
@@ -255,29 +266,6 @@ class RibPlane:
     direction: np.ndarray
 
 
-def _section_angles(section: Section) -> tuple[float, float, float]:
-    _, center, radius, apex = section
-    r = float(radius)
-    if r <= _EPS:
-        raise ValueError("Section radius must be positive to derive angles.")
-
-    cy, cz = map(float, center)
-    ay, az = map(float, apex)
-
-    s = -cz / r
-    if abs(s) > 1.0:
-        raise ValueError("Section apex is incompatible with fitted circle.")
-
-    theta_z = float(np.arcsin(s))
-    candidates = [theta_z, np.pi - theta_z]
-    y_candidates = [cy + r * np.cos(theta) for theta in candidates]
-    order = np.argsort(y_candidates)
-    theta_left = candidates[int(order[0])]
-    theta_right = candidates[int(order[1])]
-    theta_apex = float(np.arctan2(az - cz, ay - cy))
-    return theta_left, theta_right, theta_apex
-
-
 def _derive_planar_ribs(
     lute,
     sections: Sequence[Section],
@@ -288,22 +276,40 @@ def _derive_planar_ribs(
     skirt_span: float = 0.0,
     z_top: Callable[[float], float] | None = None,
     eye_x: float | None = None,
+    division_mode: str = "angle",
 ) -> List[np.ndarray]:
     skirt_span = max(0.0, float(skirt_span))
     span = x_end - x_start
     has_skirts = skirt_span > _EPS and skirt_span < span - _EPS
 
     if not has_skirts:
-        return _derive_planar_ribs_base(lute, sections, n_ribs, x_start, x_end)
+        return _derive_planar_ribs_base(lute, sections, n_ribs, x_start, x_end, division_mode=division_mode)
     if z_top is None:
         raise ValueError("z_top callable required for skirt ribs.")
 
     eye_x = eye_x if eye_x is not None else (x_end - skirt_span)
     eye_x = min(max(eye_x, x_start), x_end)
-    return _derive_planar_ribs_skirt(lute, sections, n_ribs, x_start, x_end, eye_x, z_top)
+    return _derive_planar_ribs_skirt(
+        lute,
+        sections,
+        n_ribs,
+        x_start,
+        x_end,
+        eye_x,
+        z_top,
+        division_mode=division_mode,
+    )
 
 
-def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_start: float, x_end: float) -> List[np.ndarray]:
+def _derive_planar_ribs_base(
+    lute,
+    sections: Sequence[Section],
+    n_ribs: int,
+    x_start: float,
+    x_end: float,
+    *,
+    division_mode: str = "angle",
+) -> List[np.ndarray]:
     """Original rib construction without skirts."""
     if n_ribs < 1:
         raise ValueError("n_ribs must be at least 1.")
@@ -317,12 +323,9 @@ def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_s
         raise ValueError("Unable to locate a section with positive radius.")
 
     ref_section = sections[ref_idx]
-    theta_left, theta_right, _ = _section_angles(ref_section)
-    thetas = np.linspace(theta_left, theta_right, rib_count)
+    ref_samples = ref_section.curve.divide(rib_count, mode=division_mode)
 
     x_ref = float(ref_section.x)
-    cy_ref, cz_ref = map(float, ref_section.center)
-    r_ref = float(ref_section.radius)
     spine_ref = _spine_point_xyz(lute, x_ref)
 
     spine_start = _spine_point_xyz(lute, x_start)
@@ -334,9 +337,7 @@ def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_s
     rib_planes: List[RibPlane] = []
     ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
 
-    for theta in thetas:
-        y_ref = cy_ref + r_ref * np.cos(theta)
-        z_ref = cz_ref + r_ref * np.sin(theta)
+    for y_ref, z_ref in ref_samples:
         reference_point = np.array([x_ref, y_ref, z_ref], dtype=float)
 
         plane_normal = np.cross(spine_vector, reference_point - spine_start)
@@ -360,7 +361,6 @@ def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_s
 
     for section in sections:
         x = float(section.x)
-        cy, cz = map(float, section.center)
         r = float(section.radius)
         spine_y = float(_spine_point_at_X(lute, x))
         base_yz = np.array([spine_y, 0.0], dtype=float)
@@ -372,34 +372,8 @@ def _derive_planar_ribs_base(lute, sections: Sequence[Section], n_ribs: int, x_s
 
         for plane, trace in zip(rib_planes, ribs):
             dy, dz = float(plane.direction[1]), float(plane.direction[2])
-            coeff_a = dy * dy + dz * dz
-            coeff_b = 2.0 * (dy * (base_yz[0] - cy) + dz * (base_yz[1] - cz))
-            coeff_c = (base_yz[0] - cy) ** 2 + (base_yz[1] - cz) ** 2 - r * r
-            discriminant = coeff_b * coeff_b - 4.0 * coeff_a * coeff_c
-
-            if discriminant < -1e-7:
-                raise RuntimeError(f"Planar rib plane misses section circle at X={x:.6f}")
-
-            discriminant = max(0.0, discriminant)
-            sqrt_disc = np.sqrt(discriminant)
-
-            s_candidates = [
-                (-coeff_b - sqrt_disc) / (2.0 * coeff_a),
-                (-coeff_b + sqrt_disc) / (2.0 * coeff_a),
-            ]
-            s_valid = [s for s in s_candidates if s >= -1e-9]
-            if not s_valid:
-                s = max(s_candidates, key=lambda val: val)
-                if s < 0.0:
-                    s = 0.0
-            else:
-                s = max(s_valid)
-                if s < 0.0:
-                    s = 0.0
-
-            y = base_yz[0] + s * dy
-            z = base_yz[1] + s * dz
-            trace.append(np.array([x, y, z], dtype=float))
+            yz_point = section.curve.intersect_with_direction(base_yz, np.array([dy, dz], dtype=float))
+            trace.append(np.array([x, yz_point[0], yz_point[1]], dtype=float))
 
     return [np.asarray(trace, dtype=float) for trace in ribs]
 
@@ -412,6 +386,8 @@ def _derive_planar_ribs_skirt(
     x_end: float,
     eye_x: float,
     z_top: Callable[[float], float],
+    *,
+    division_mode: str = "angle",
 ) -> List[np.ndarray]:
     """Skirt ribs: interior ribs end at eye; skirts run to tail via straight segment."""
     rib_count = int(n_ribs) + 1
@@ -428,15 +404,9 @@ def _derive_planar_ribs_skirt(
     if float(neck_section.radius) <= _EPS or float(eye_section.radius) <= _EPS:
         raise ValueError("Neck or eye section radius must be positive for skirt ribs.")
 
-    theta_left, theta_right, _ = _section_angles(neck_section)
-    thetas = np.linspace(theta_left, theta_right, rib_count)
-
-    cy_neck, cz_neck = map(float, neck_section.center)
-    r_neck = float(neck_section.radius)
-    neck_points = [
-        np.array([x_start, cy_neck + r_neck * np.cos(theta), cz_neck + r_neck * np.sin(theta)], dtype=float)
-        for theta in thetas
-    ]
+    neck_points = []
+    for y_neck, z_neck in neck_section.curve.divide(rib_count, mode=division_mode):
+        neck_points.append(np.array([x_start, y_neck, z_neck], dtype=float))
 
     eye_point = _spine_point_xyz(lute, eye_x)
     eye_point[2] = max(float(z_top(eye_x)), 0.0)
@@ -450,29 +420,6 @@ def _derive_planar_ribs_skirt(
     if norm_eye <= _EPS:
         raise ValueError("Eye plane is degenerate; adjust skirt span or geometry.")
     eye_normal /= norm_eye
-
-    def _intersect_section_with_eye(section: Section) -> tuple[np.ndarray, np.ndarray]:
-        x = float(section.x)
-        cy, cz = map(float, section.center)
-        r = float(section.radius)
-        A = eye_normal[1] * r
-        B = eye_normal[2] * r
-        C = eye_normal[0] * (x - eye_point[0]) + eye_normal[1] * (cy - eye_point[1]) + eye_normal[2] * (
-            cz - eye_point[2]
-        )
-        R = math.hypot(A, B)
-        if R <= _EPS:
-            raise RuntimeError("Eye plane parallel to section circle.")
-        arg = -C / R
-        arg = max(-1.0, min(1.0, arg))
-        base = math.atan2(B, A)
-        delta = math.acos(arg)
-        t1 = base + delta
-        t2 = base - delta
-        p1 = np.array([x, cy + r * math.cos(t1), cz + r * math.sin(t1)], dtype=float)
-        p2 = np.array([x, cy + r * math.cos(t2), cz + r * math.sin(t2)], dtype=float)
-        pts = sorted([p1, p2], key=lambda p: p[1])
-        return pts[0], pts[1]
 
     ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
     anchors_yz: List[np.ndarray | None] = [None for _ in range(rib_count)]
@@ -502,28 +449,14 @@ def _derive_planar_ribs_skirt(
                 ribs[idx].append(np.array([x, yz[0], yz[1]], dtype=float))
             continue
 
-        left_pt, right_pt = _intersect_section_with_eye(section)
-        cy, cz = map(float, section.center)
-        r = float(section.radius)
-        theta_left_sec = math.atan2(left_pt[2] - cz, left_pt[1] - cy)
-        theta_right_sec = math.atan2(right_pt[2] - cz, right_pt[1] - cy)
-        if theta_left_sec > theta_right_sec:
-            theta_left_sec, theta_right_sec = theta_right_sec, theta_left_sec
+        left_yz, right_yz = section.curve.intersect_with_plane(eye_normal, eye_point, float(section.x))
+        samples = section.curve.divide_between_points(left_yz, right_yz, rib_count, mode=division_mode)
 
-        for idx in range(rib_count):
-            if idx == 0:
-                pt = left_pt
-            elif idx == rib_count - 1:
-                pt = right_pt
-            else:
-                t = idx / float(rib_count - 1)
-                theta = theta_left_sec + t * (theta_right_sec - theta_left_sec)
-                y = cy + r * math.cos(theta)
-                z = cz + r * math.sin(theta)
-                pt = np.array([x, y, z], dtype=float)
+        for idx, yz in enumerate(samples):
+            pt = np.array([x, yz[0], yz[1]], dtype=float)
             ribs[idx].append(pt)
             if abs(x - eye_x) <= 1e-8:
-                anchors_yz[idx] = np.array([pt[1], pt[2]], dtype=float)
+                anchors_yz[idx] = np.array([yz[0], yz[1]], dtype=float)
 
     # Replace outermost ribs with soundboard outlines (projected on Z=0).
     boundary_left: list[np.ndarray] = []
