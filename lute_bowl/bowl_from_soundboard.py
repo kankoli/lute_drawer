@@ -390,7 +390,7 @@ def _derive_planar_ribs_base(
             raise ValueError("Degenerate plane encountered while constructing rib.")
         plane_normal /= norm_len
 
-        direction = np.cross(plane_normal, _EX)
+        direction = np.cross(plane_normal, baseline_vector)
         dir_len = np.sqrt(direction[1] ** 2 + direction[2] ** 2)
         if dir_len <= _EPS:
             raise ValueError("Failed to derive planar direction for rib.")
