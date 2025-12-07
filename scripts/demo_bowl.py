@@ -15,11 +15,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.mold_builder import build_mold_sections
 from lute_bowl.top_curves import TopCurve
+from lute_bowl import section_curve as section_curve_mod
 from plotting import plot_bowl, plot_mold_sections_2d
 from plotting.step_renderers import write_mold_sections_step
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
+DEFAULT_SECTION_CURVE = "lute_bowl.section_curve.CircularSectionCurve"
 
 
 def _resolve_class(path: str):
@@ -40,6 +42,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--top-curve",
         default=DEFAULT_CURVE,
         help=f"Fully qualified top-curve class or omit for default (default: {DEFAULT_CURVE})",
+    )
+    parser.add_argument(
+        "--section-curve",
+        default=DEFAULT_SECTION_CURVE,
+        help=f"Fully qualified section-curve class or omit for default (default: {DEFAULT_SECTION_CURVE})",
     )
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
     parser.add_argument(
@@ -105,6 +112,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional mold section index for --plot2d; negative indices allowed.",
     )
     parser.add_argument(
+        "--show-eye-plane",
+        action="store_true",
+        help="Visualize the eye/neck plane (skirt builds only).",
+    )
+    parser.add_argument(
         "--step-out",
         type=Path,
         default=None,
@@ -129,11 +141,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if top_curve_cls is None or not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve):
         raise TypeError("--top-curve must reference a TopCurve subclass")
 
+    section_curve_cls = _resolve_class(args.section_curve) if args.section_curve else None
+    if section_curve_cls is None or not isinstance(section_curve_cls, type) or not issubclass(section_curve_cls, section_curve_mod.BaseSectionCurve):
+        raise TypeError("--section-curve must reference a BaseSectionCurve subclass")
+
     build_kwargs = {"n_ribs": args.ribs, "top_curve": top_curve_cls}
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
     if args.skirt_span is not None:
         build_kwargs["skirt_span"] = args.skirt_span
+    build_kwargs["section_curve_cls"] = section_curve_cls
     sections, ribs = build_bowl_ribs(lute, **build_kwargs)
 
     mold_sections = None
@@ -182,6 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_section_circles=show_circles,
         show_top_curve=args.show_top_curve,
         top_curve_name=getattr(lute, "top_curve_label", None),
+        show_eye_plane=args.show_eye_plane,
         mold_sections=mold_sections,
     )
 

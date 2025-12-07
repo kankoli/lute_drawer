@@ -53,6 +53,7 @@ def plot_bowl(
     show_form_points: bool = True,
     show_spine: bool = True,
     highlight_neck_joint: bool = True,
+    show_eye_plane: bool = False,
     mold_sections: Sequence[MoldSection] | None = None,
     show_mold_faces: bool = True,
     show_mold_rib_points: bool = True,
@@ -73,6 +74,16 @@ def plot_bowl(
             xs_bounds.append(np.asarray(rib[:, 0], dtype=float))
             ys_bounds.append(np.asarray(rib[:, 1], dtype=float))
             zs_bounds.append(np.asarray(rib[:, 2], dtype=float))
+    if show_eye_plane and hasattr(lute, "eye_plane_info"):
+        info = getattr(lute, "eye_plane_info", {})
+        triangle = info.get("triangle")
+        if triangle:
+            tri = np.asarray(triangle, dtype=float)
+            poly = Poly3DCollection([tri], alpha=0.15, facecolor="orange", edgecolor="orange")
+            ax.add_collection3d(poly)
+            xs_bounds.append(tri[:, 0])
+            ys_bounds.append(tri[:, 1])
+            zs_bounds.append(tri[:, 2])
 
     if show_soundboard and hasattr(lute, "final_arcs"):
         arcs = list(getattr(lute, "final_arcs", [])) + list(getattr(lute, "final_reflected_arcs", []))
@@ -146,16 +157,24 @@ def plot_bowl(
 
     if show_section_circles and len(sections) <= 80:
         fb_x = float(lute.form_bottom.x)
-        for section in sections:
-            x, center, r, _ = section
-            if r <= 0 or abs(x - fb_x) < 1e-9:
+        radii = [float(s.radius) for s in sections]
+        ref_idx = int(np.argmax(radii)) if radii else None
+        for idx, section in enumerate(sections):
+            x = float(section.x)
+            if abs(x - fb_x) < 1e-9:
                 continue
-            C_Y, C_Z = float(center[0]), float(center[1])
-            phi = np.linspace(0, 2 * np.pi, 200)
-            Y = C_Y + r * np.cos(phi)
-            Z = C_Z + r * np.sin(phi)
-            X = np.full_like(Y, float(x))
-            ax.plot(X, Y, Z, color="0.3", alpha=0.25)
+            pts = np.asarray(section.curve.sample_points(200), float)
+            Y = pts[:, 0]
+            Z = pts[:, 1]
+            X = np.full_like(Y, x)
+            color = "0.3"
+            lw = 0.6
+            alpha = 0.25
+            if ref_idx is not None and idx == ref_idx:
+                color = "tab:red"
+                lw = 1.0
+                alpha = 0.6
+            ax.plot(X, Y, Z, color=color, alpha=alpha, lw=lw)
 
     if apex_Xs:
         if show_apexes:

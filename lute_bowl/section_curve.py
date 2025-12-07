@@ -87,6 +87,11 @@ class BaseSectionCurve(ABC):
     ) -> list[np.ndarray]:
         ...
 
+    def sample_points(self, n: int = 200) -> np.ndarray:
+        """Return sampled YZ points along the curve for plotting/debug."""
+        pts = self.divide(max(2, int(n)), mode="angle")
+        return np.asarray(pts, float)
+
 
 @dataclass(frozen=True)
 class CircularSectionCurve(BaseSectionCurve):
@@ -240,8 +245,9 @@ class CircularSectionCurve(BaseSectionCurve):
         thetas = np.linspace(theta_start, theta_end, count)
         return [self.point_at_angle(theta) for theta in thetas]
 
+    def sample_points(self, n: int = 200) -> np.ndarray:
+        pts = self.divide(max(2, int(n)), mode="angle")
+        return np.asarray(pts, float)
 
-# Backwards-compatible alias
-SectionCurve = CircularSectionCurve
 
-__all__ = ["BaseSectionCurve", "CircularSectionCurve", "SectionCurve"]
+__all__ = ["BaseSectionCurve", "CircularSectionCurve"]

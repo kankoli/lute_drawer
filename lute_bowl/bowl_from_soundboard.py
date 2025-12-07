@@ -26,7 +26,7 @@ from .top_curves import (
     SimpleAmplitudeCurve,
     TopCurve,
 )
-from .section_curve import SectionCurve
+from .section_curve import BaseSectionCurve, CircularSectionCurve
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -41,7 +41,7 @@ class Section:
     """Geometry for a single bowl slice."""
 
     x: float
-    curve: SectionCurve
+    curve: BaseSectionCurve
 
     @property
     def center(self) -> np.ndarray:
@@ -215,7 +215,15 @@ def _select_section_positions(lute, n_sections: int, margin: float, debug: bool)
     return xs
 
 
-def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section | None:
+def _sample_section(
+    lute,
+    X: float,
+    z_top: Callable[[float], float],
+    *,
+    curve_cls: type[BaseSectionCurve] = CircularSectionCurve,
+    curve_kwargs: dict | None = None,
+) -> Section | None:
+    curve_kwargs = curve_kwargs or {}
     hit = _extract_side_points_at_X(lute, X)
     if hit is None:
         return None
@@ -226,7 +234,7 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
     if width <= 1e-6:
         apex = np.array([float(Y_apex), max(Z_apex, 0.0)], dtype=float)
         center = np.array([float(Y_apex), 0.0], dtype=float)
-        curve = SectionCurve.degenerate(center, apex)
+        curve = curve_cls.degenerate(center, apex, **curve_kwargs)
         return Section(Xs, curve)
 
     if abs(Z_apex) < 1e-6:
@@ -240,10 +248,11 @@ def _sample_section(lute, X: float, z_top: Callable[[float], float]) -> Section 
         else:
             return None
     apex = np.array([Y_apex, Z_apex], dtype=float)
-    curve = SectionCurve.from_span(
+    curve = curve_cls.from_span(
         np.array([float(L[1]), 0.0], dtype=float),
         np.array([float(R[1]), 0.0], dtype=float),
         apex,
+        **curve_kwargs,
     )
     if float(curve.center[1]) >= 0.0:
         warnings.warn(
@@ -281,9 +290,25 @@ def _derive_planar_ribs(
     skirt_span = max(0.0, float(skirt_span))
     span = x_end - x_start
     has_skirts = skirt_span > _EPS and skirt_span < span - _EPS
+    baseline_start = np.array([x_start, float(_spine_point_at_X(lute, x_start)), 0.0], dtype=float)
+    baseline_end = np.array([x_end, float(_spine_point_at_X(lute, x_end)), 0.0], dtype=float)
+    if eye_x is not None and z_top is not None:
+        baseline_end = np.array(
+            [eye_x, float(_spine_point_at_X(lute, eye_x)), float(z_top(eye_x))],
+            dtype=float,
+        )
 
     if not has_skirts:
-        return _derive_planar_ribs_base(lute, sections, n_ribs, x_start, x_end, division_mode=division_mode)
+        return _derive_planar_ribs_base(
+            lute,
+            sections,
+            n_ribs,
+            x_start,
+            x_end,
+            division_mode=division_mode,
+            baseline_start=baseline_start,
+            baseline_end=baseline_end,
+        )
     if z_top is None:
         raise ValueError("z_top callable required for skirt ribs.")
 
@@ -309,6 +334,8 @@ def _derive_planar_ribs_base(
     x_end: float,
     *,
     division_mode: str = "angle",
+    baseline_start: np.ndarray | None = None,
+    baseline_end: np.ndarray | None = None,
 ) -> List[np.ndarray]:
     """Original rib construction without skirts."""
     if n_ribs < 1:
@@ -326,13 +353,30 @@ def _derive_planar_ribs_base(
     ref_samples = ref_section.curve.divide(rib_count, mode=division_mode)
 
     x_ref = float(ref_section.x)
-    spine_ref = _spine_point_xyz(lute, x_ref)
 
-    spine_start = _spine_point_xyz(lute, x_start)
-    spine_end = _spine_point_xyz(lute, x_end)
-    spine_vector = spine_end - spine_start
-    if np.linalg.norm(spine_vector) <= _EPS:
-        raise ValueError("Spine vector collapsed after applying end blocks.")
+    baseline_start = (
+        np.asarray(baseline_start, float)
+        if baseline_start is not None
+        else _spine_point_xyz(lute, x_start)
+    )
+    baseline_end = (
+        np.asarray(baseline_end, float)
+        if baseline_end is not None
+        else _spine_point_xyz(lute, x_end)
+    )
+
+    baseline_vector = baseline_end - baseline_start
+    if np.linalg.norm(baseline_vector) <= _EPS:
+        raise ValueError("Baseline vector collapsed after applying end blocks.")
+
+    def _baseline_point(x: float) -> np.ndarray:
+        if abs(baseline_vector[0]) > _EPS:
+            t = (x - baseline_start[0]) / baseline_vector[0]
+        else:
+            t = (x - baseline_start[0]) / (baseline_vector[0] + _EPS)
+        return baseline_start + t * baseline_vector
+
+    spine_ref = _baseline_point(x_ref)
 
     rib_planes: List[RibPlane] = []
     ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
@@ -340,7 +384,7 @@ def _derive_planar_ribs_base(
     for y_ref, z_ref in ref_samples:
         reference_point = np.array([x_ref, y_ref, z_ref], dtype=float)
 
-        plane_normal = np.cross(spine_vector, reference_point - spine_start)
+        plane_normal = np.cross(baseline_vector, reference_point - baseline_start)
         norm_len = np.linalg.norm(plane_normal)
         if norm_len <= _EPS:
             raise ValueError("Degenerate plane encountered while constructing rib.")
@@ -362,8 +406,8 @@ def _derive_planar_ribs_base(
     for section in sections:
         x = float(section.x)
         r = float(section.radius)
-        spine_y = float(_spine_point_at_X(lute, x))
-        base_yz = np.array([spine_y, 0.0], dtype=float)
+        base_point = _baseline_point(x)
+        base_yz = np.array([float(base_point[1]), float(base_point[2])], dtype=float)
 
         if r <= _EPS:
             for trace in ribs:
@@ -420,6 +464,19 @@ def _derive_planar_ribs_skirt(
     if norm_eye <= _EPS:
         raise ValueError("Eye plane is degenerate; adjust skirt span or geometry.")
     eye_normal /= norm_eye
+    setattr(
+        lute,
+        "eye_plane_info",
+        {
+            "point": eye_point.copy(),
+            "normal": eye_normal.copy(),
+            "triangle": [
+                neck_points[1].copy(),
+                neck_points[-2].copy(),
+                eye_point.copy(),
+            ],
+        },
+    )
 
     ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
     anchors_yz: List[np.ndarray | None] = [None for _ in range(rib_count)]

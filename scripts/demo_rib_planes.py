@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import lute_bowl.rib_builder as rib_builder
+from lute_bowl import section_curve as section_curve_mod
 from lute_bowl.rib_form_builder import (
     all_rib_surfaces_convex,
     build_rib_surfaces,
@@ -31,6 +32,7 @@ from plotting.ribs import (
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.MidCurve"
+DEFAULT_SECTION_CURVE = "lute_bowl.section_curve.CircularSectionCurve"
 
 
 def _resolve_class(path: str):
@@ -48,6 +50,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lute", default=DEFAULT_LUTE, help=f"Default: {DEFAULT_LUTE}")
     parser.add_argument("--curve", default=DEFAULT_CURVE, help=f"Default: {DEFAULT_CURVE}")
+    parser.add_argument(
+        "--section-curve",
+        default=DEFAULT_SECTION_CURVE,
+        help=f"Fully qualified section-curve class or omit for default (default: {DEFAULT_SECTION_CURVE})",
+    )
     parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals to sample")
     parser.add_argument(
         "--sections",
@@ -114,13 +121,19 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(curve_cls, type) or not issubclass(curve_cls, TopCurve):
         raise TypeError("curve must reference a TopCurve subclass")
 
+    section_curve_cls = _resolve_class(args.section_curve) if args.section_curve else None
+    if section_curve_cls is None or not isinstance(section_curve_cls, type) or not issubclass(
+        section_curve_cls, section_curve_mod.BaseSectionCurve
+    ):
+        raise TypeError("--section-curve must reference a BaseSectionCurve subclass")
+
     PAD_MM = 20.0
     MIN_PANEL_IN = 2.0
     MM_PER_INCH = 25.4
 
     lute = lute_cls()
     unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
-    build_kwargs = {"n_ribs": args.ribs, "top_curve": curve_cls}
+    build_kwargs = {"n_ribs": args.ribs, "top_curve": curve_cls, "section_curve_cls": section_curve_cls}
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
     if args.skirt_span is not None:

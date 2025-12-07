@@ -7,6 +7,7 @@ import numpy as np
 
 from .bowl_from_soundboard import Section, _derive_planar_ribs, _sample_section
 from .top_curves import SimpleAmplitudeCurve, TopCurve
+from .section_curve import BaseSectionCurve, CircularSectionCurve
 
 _EPS = 1e-9
 
@@ -18,6 +19,8 @@ def build_bowl_ribs(
     n_sections: int = 300,
     top_curve: type[TopCurve] = SimpleAmplitudeCurve,
     skirt_span: float = 0.0,
+    section_curve_cls: type[BaseSectionCurve] | None = None,
+    section_curve_kwargs: dict | None = None,
     division_mode: str = "angle",
 ) -> tuple[list[Section], List[np.ndarray]]:
     """Return sampled sections and rib polylines between neck joint and tail."""
@@ -28,6 +31,8 @@ def build_bowl_ribs(
         raise TypeError("top_curve must be a TopCurve subclass")
 
     z_top = top_curve.build(lute)
+    curve_cls = section_curve_cls or CircularSectionCurve
+    curve_kwargs = section_curve_kwargs or {}
     setattr(lute, "top_curve_label", top_curve.__name__)
 
     neck_point = getattr(lute, "point_neck_joint", None)
@@ -50,7 +55,7 @@ def build_bowl_ribs(
     sections: list[Section] = []
 
     try:
-        start_section = _sample_section(lute, float(start_x), z_top)
+        start_section = _sample_section(lute, float(start_x), z_top, curve_cls=curve_cls, curve_kwargs=curve_kwargs)
     except Exception as exc:  # pragma: no cover - diagnostic aid
         raise RuntimeError(f"Failed to sample section at X={float(start_x):.6f}") from exc
     if start_section is None:
@@ -62,7 +67,7 @@ def build_bowl_ribs(
 
     for X in interior_xs:
         try:
-            section = _sample_section(lute, float(X), z_top)
+            section = _sample_section(lute, float(X), z_top, curve_cls=curve_cls, curve_kwargs=curve_kwargs)
         except Exception as exc:  # pragma: no cover - diagnostic aid
             raise RuntimeError(f"Failed to sample section at X={float(X):.6f}") from exc
         if section is None:
@@ -70,7 +75,7 @@ def build_bowl_ribs(
         sections.append(section)
 
     try:
-        end_section = _sample_section(lute, float(end_x), z_top)
+        end_section = _sample_section(lute, float(end_x), z_top, curve_cls=curve_cls, curve_kwargs=curve_kwargs)
     except Exception as exc:  # pragma: no cover - diagnostic aid
         raise RuntimeError(f"Failed to sample section at X={float(end_x):.6f}") from exc
     if end_section is None:
