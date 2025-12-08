@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import numpy as np
+import warnings
 
 _EPS = 1e-9
 
@@ -251,3 +252,196 @@ class CircularSectionCurve(BaseSectionCurve):
 
 
 __all__ = ["BaseSectionCurve", "CircularSectionCurve"]
+
+
+@dataclass(frozen=True)
+class CubicBezierSectionCurve(BaseSectionCurve):
+    """
+    Symmetric cubic Bézier passing through left, apex (at t=0.5), and right.
+
+    Control points are chosen so P(0)=left, P(1)=right, and P(0.5)=apex with
+    C1=C2 to keep the curve smooth and centred.
+    """
+
+    left: np.ndarray
+    apex: np.ndarray
+    right: np.ndarray
+    control: np.ndarray
+    center: np.ndarray
+    radius: float
+
+    @classmethod
+    def from_span(
+        cls,
+        left_yz: np.ndarray,
+        right_yz: np.ndarray,
+        apex_yz: np.ndarray,
+        *,
+        control_scale: float = 1.0,
+    ) -> "CubicBezierSectionCurve":
+        left = np.asarray(left_yz, float)
+        right = np.asarray(right_yz, float)
+        apex = np.asarray(apex_yz, float)
+        control = (apex - 0.125 * (left + right)) / 0.75
+        if abs(control_scale - 1.0) > 1e-8:
+            warnings.warn(
+                "control_scale is ignored for symmetric Bézier sections; "
+                "the control point is uniquely determined by left/apex/right.",
+                RuntimeWarning,
+            )
+        try:
+            center, radius = _circle_through_three_points_2d(left, right, apex)
+        except Exception:
+            center = np.array([(left[0] + right[0]) * 0.5, 0.0], dtype=float)
+            radius = float(np.linalg.norm(left - right)) * 0.5
+        return cls(left, apex, right, control, np.asarray(center, float), float(radius))
+
+    @classmethod
+    def degenerate(cls, center_yz: np.ndarray, apex_yz: np.ndarray, **_ignored) -> "CubicBezierSectionCurve":
+        center = np.asarray(center_yz, float)
+        apex = np.asarray(apex_yz, float)
+        return cls(center.copy(), apex, center.copy(), center.copy(), center.copy(), 0.0)
+
+    def angles(self) -> Tuple[float, float, float]:
+        return (0.0, 1.0, 0.5)
+
+    def _coeffs(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        P0 = self.left
+        P1 = self.control
+        P2 = self.control
+        P3 = self.right
+        a = -P0 + 3 * P1 - 3 * P2 + P3
+        b = 3 * P0 - 6 * P1 + 3 * P2
+        c = -3 * P0 + 3 * P1
+        d = P0
+        return a, b, c, d
+
+    def point_at_angle(self, theta: float) -> np.ndarray:
+        t = float(theta)
+        a, b, c, d = self._coeffs()
+        return ((a * t + b) * t + c) * t + d
+
+    def angle_of_point(self, point_yz: np.ndarray) -> float:
+        target = np.asarray(point_yz, float)
+        ts = np.linspace(0.0, 1.0, 600)
+        pts = np.vstack([self.point_at_angle(t) for t in ts])
+        idx = int(np.argmin(np.linalg.norm(pts - target[None, :], axis=1)))
+        return float(ts[idx])
+
+    def _line_roots(self, origin: np.ndarray, direction: np.ndarray) -> list[float]:
+        dy, dz = direction
+        y0, z0 = origin
+        a, b, c, d = self._coeffs()
+        # y(t) = ay t^3 + by t^2 + cy t + dy
+        ay, by, cy, dy0 = a[0], b[0], c[0], d[0]
+        az, bz, cz, dz0 = a[1], b[1], c[1], d[1]
+        # Solve dy*(z(t)-z0) - dz*(y(t)-y0) = 0 => cubic
+        coeff3 = dy * az - dz * ay
+        coeff2 = dy * bz - dz * by
+        coeff1 = dy * cz - dz * cy
+        coeff0 = dy * (dz0 - z0) - dz * (dy0 - y0)
+        roots = np.roots([coeff3, coeff2, coeff1, coeff0])
+        out: list[float] = []
+        for r in roots:
+            if abs(r.imag) > 1e-6:
+                continue
+            t = float(r.real)
+            if -1e-6 <= t <= 1.0 + 1e-6:
+                out.append(t)
+        return out
+
+    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
+        dir_vec = np.asarray(direction_yz, float)
+        if np.linalg.norm(dir_vec) <= _EPS:
+            raise ValueError("Direction vector is degenerate.")
+        dir_unit = dir_vec / (np.linalg.norm(dir_vec) + _EPS)
+        roots = self._line_roots(np.asarray(origin_yz, float), dir_vec)
+        if not roots:
+            raise RuntimeError("Planar rib plane misses section curve.")
+        best_t = max(roots, key=lambda t: float(np.dot(self.point_at_angle(t) - origin_yz, dir_unit)))
+        return self.point_at_angle(best_t)
+
+    def intersect_with_plane(
+        self,
+        plane_normal: np.ndarray,
+        plane_point: np.ndarray,
+        section_x: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        n = np.asarray(plane_normal, float)
+        p0 = np.asarray(plane_point, float)
+        a, b, c, d = self._coeffs()
+
+        # Solve dot(p(t) - p0, n) = 0 as a cubic in t.
+        n0, n1, n2 = float(n[0]), float(n[1]), float(n[2])
+        coeff3 = n1 * float(a[0]) + n2 * float(a[1])
+        coeff2 = n1 * float(b[0]) + n2 * float(b[1])
+        coeff1 = n1 * float(c[0]) + n2 * float(c[1])
+        coeff0 = (
+            n0 * float(section_x)
+            + n1 * float(d[0])
+            + n2 * float(d[1])
+            - float(np.dot(p0, n))
+        )
+
+        roots_raw = np.roots([coeff3, coeff2, coeff1, coeff0])
+        ts: list[float] = []
+        for r in roots_raw:
+            if abs(r.imag) > 1e-8:
+                continue
+            t = float(r.real)
+            if -1e-9 <= t <= 1.0 + 1e-9:
+                ts.append(min(1.0, max(0.0, t)))
+
+        ts.sort()
+        ts_unique: list[float] = []
+        for t in ts:
+            if not ts_unique or abs(t - ts_unique[-1]) > 1e-6:
+                ts_unique.append(t)
+
+        if not ts_unique:
+            warnings.warn(
+                "CubicBezierSectionCurve.intersect_with_plane fell back to closest point; no real roots on [0,1].",
+                RuntimeWarning,
+            )
+            sample_ts = np.linspace(0.0, 1.0, 400)
+            fvals = coeff3 * sample_ts**3 + coeff2 * sample_ts**2 + coeff1 * sample_ts + coeff0
+            t_closest = float(sample_ts[int(np.argmin(np.abs(fvals)))])
+            ts_unique = [t_closest]
+
+        if len(ts_unique) == 1:
+            ts_unique = [ts_unique[0], ts_unique[0]]
+        elif len(ts_unique) > 2:
+            ts_unique = [ts_unique[0], ts_unique[-1]]
+
+        pts = [self.point_at_angle(t) for t in ts_unique[:2]]
+        pts_sorted = sorted(pts, key=lambda p: p[0])
+        return pts_sorted[0], pts_sorted[1]
+
+    def divide(self, count: int, *, mode: str = "angle") -> list[np.ndarray]:
+        if count < 2:
+            raise ValueError("count must be at least 2")
+        ts = np.linspace(0.0, 1.0, count)
+        return [self.point_at_angle(t) for t in ts]
+
+    def divide_between_points(
+        self,
+        start_yz: np.ndarray,
+        end_yz: np.ndarray,
+        count: int,
+        *,
+        mode: str = "angle",
+    ) -> list[np.ndarray]:
+        if count < 2:
+            raise ValueError("count must be at least 2")
+        t_start = self.angle_of_point(start_yz)
+        t_end = self.angle_of_point(end_yz)
+        ts = np.linspace(t_start, t_end, count)
+        return [self.point_at_angle(t) for t in ts]
+
+    def sample_points(self, n: int = 1000) -> np.ndarray:
+        ts = np.linspace(0.0, 1.0, max(2, int(n)))
+        pts = [self.point_at_angle(t) for t in ts]
+        return np.asarray(pts, float)
+
+
+__all__ = ["BaseSectionCurve", "CircularSectionCurve", "CubicBezierSectionCurve"]

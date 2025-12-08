@@ -1,13 +1,13 @@
 """Helpers for sampling planar ribs and bowl sections."""
 from __future__ import annotations
 
-from typing import List
+from typing import Callable, List
 
 import numpy as np
 
 from .bowl_from_soundboard import Section, _derive_planar_ribs, _sample_section
 from .top_curves import SimpleAmplitudeCurve, TopCurve
-from .section_curve import BaseSectionCurve, CircularSectionCurve
+from .section_curve import BaseSectionCurve, CircularSectionCurve, CubicBezierSectionCurve
 
 _EPS = 1e-9
 
@@ -22,8 +22,15 @@ def build_bowl_ribs(
     section_curve_cls: type[BaseSectionCurve] | None = None,
     section_curve_kwargs: dict | None = None,
     division_mode: str = "angle",
+    debug_rib_indices: list[int] | None = None,
+    debug_logger: Callable[[str], None] | None = None,
+    debug_plot: bool = False,
 ) -> tuple[list[Section], List[np.ndarray]]:
-    """Return sampled sections and rib polylines between neck joint and tail."""
+    """Return sampled sections and rib polylines between neck joint and tail.
+
+    debug_rib_indices is a 1-based list of ribs to log sampling decisions for,
+    and debug_logger is a callable that receives formatted log strings.
+    """
     if n_sections < 2:
         raise ValueError("n_sections must be at least 2.")
 
@@ -92,6 +99,9 @@ def build_bowl_ribs(
         z_top=z_top,
         eye_x=eye_x,
         division_mode=division_mode,
+        debug_rib_indices=debug_rib_indices,
+        debug_logger=debug_logger,
+        debug_plot=debug_plot,
     )
 
     return sections, ribs

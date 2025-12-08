@@ -145,7 +145,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if section_curve_cls is None or not isinstance(section_curve_cls, type) or not issubclass(section_curve_cls, section_curve_mod.BaseSectionCurve):
         raise TypeError("--section-curve must reference a BaseSectionCurve subclass")
 
-    build_kwargs = {"n_ribs": args.ribs, "top_curve": top_curve_cls}
+    build_kwargs = {
+        "n_ribs": args.ribs,
+        "top_curve": top_curve_cls,
+        # "debug_rib_indices": [3, 4],
+        # "debug_logger": print,
+    }
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
     if args.skirt_span is not None:
