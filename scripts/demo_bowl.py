@@ -22,6 +22,24 @@ from plotting.step_renderers import write_mold_sections_step
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
 DEFAULT_SECTION_CURVE = "lute_bowl.section_curve.CircularSectionCurve"
+DEFAULT_SKIRT_SPAN = 0.0
+
+PRESETS = {
+    "mid-cosine-arch": {
+        "top_curve": "lute_bowl.top_curves.MidCurve",
+        "section_curve": "lute_bowl.section_curve.CosineArchSectionCurve",
+        "section_curve_kwargs": {"shape_power": 2.2},
+        "skirt_span": 1.5,
+    },
+    "turkish-oud-skirted": {
+        "lute": "lute_soundboard.TurkishOud2_2",
+        "top_curve": "lute_bowl.top_curves.DeepBackCurve",
+        "section_curve": "lute_bowl.section_curve.CosineArchSectionCurve",
+        "section_curve_kwargs": {"shape_power": 2.2},
+        "skirt_span": 1.5,
+        "n_ribs": 21,
+    },
+}
 
 
 def _resolve_class(path: str):
@@ -37,18 +55,18 @@ def _resolve_class(path: str):
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lute", default=DEFAULT_LUTE, help=f"Default: {DEFAULT_LUTE}")
+    parser.add_argument("--lute", default=None, help=f"Fully qualified lute class (default if none/preset: {DEFAULT_LUTE})")
     parser.add_argument(
         "--top-curve",
-        default=DEFAULT_CURVE,
-        help=f"Fully qualified top-curve class or omit for default (default: {DEFAULT_CURVE})",
+        default=None,
+        help=f"Fully qualified top-curve class (default if none/preset: {DEFAULT_CURVE})",
     )
     parser.add_argument(
         "--section-curve",
-        default=DEFAULT_SECTION_CURVE,
-        help=f"Fully qualified section-curve class or omit for default (default: {DEFAULT_SECTION_CURVE})",
+        default=None,
+        help=f"Fully qualified section-curve class (default if none/preset: {DEFAULT_SECTION_CURVE})",
     )
-    parser.add_argument("--ribs", type=int, default=13, help="Number of rib intervals.")
+    parser.add_argument("--ribs", type=int, default=None, help="Number of rib intervals.")
     parser.add_argument(
         "--sections",
         type=int,
@@ -58,8 +76,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skirt-span",
         type=float,
-        default=0.0,
-        help="Distance from tail along spine where skirt ribs begin (units).",
+        default=None,
+        help=f"Distance from tail along spine where skirt ribs begin (units, default if none/preset: {DEFAULT_SKIRT_SPAN}).",
     )
     parser.add_argument(
         "--show-section-circles",
@@ -128,34 +146,59 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=0.0,
         help="Additional tail support extension in millimetres for STEP output.",
     )
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS.keys()),
+        help="Optional named preset; explicit flags override preset values.",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
 
-    lute_cls = _resolve_class(args.lute)
+    preset_cfg = {}
+    if args.preset:
+        raw = dict(PRESETS[args.preset])
+        if "top_curve" in raw:
+            raw["top_curve"] = _resolve_class(raw["top_curve"])
+        if "section_curve" in raw:
+            raw["section_curve_cls"] = _resolve_class(raw.pop("section_curve"))
+        if "lute" in raw:
+            raw["lute_cls"] = _resolve_class(raw.pop("lute"))
+        preset_cfg = raw
+
+    lute_path = args.lute or preset_cfg.get("lute_cls") or DEFAULT_LUTE
+    lute_cls = lute_path if isinstance(lute_path, type) else _resolve_class(lute_path)
     lute = lute_cls()
 
     top_curve_cls = _resolve_class(args.top_curve) if args.top_curve else None
-    if top_curve_cls is None or not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve):
+    if top_curve_cls is not None and (not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve)):
         raise TypeError("--top-curve must reference a TopCurve subclass")
 
     section_curve_cls = _resolve_class(args.section_curve) if args.section_curve else None
-    if section_curve_cls is None or not isinstance(section_curve_cls, type) or not issubclass(section_curve_cls, section_curve_mod.BaseSectionCurve):
+    if section_curve_cls is not None and (not isinstance(section_curve_cls, type) or not issubclass(section_curve_cls, section_curve_mod.BaseSectionCurve)):
         raise TypeError("--section-curve must reference a BaseSectionCurve subclass")
 
     build_kwargs = {
-        "n_ribs": args.ribs,
-        "top_curve": top_curve_cls,
+        "preset": preset_cfg or None,
         # "debug_rib_indices": [3, 4],
         # "debug_logger": print,
     }
+    if args.ribs is not None:
+        build_kwargs["n_ribs"] = args.ribs
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
+    if top_curve_cls is not None:
+        build_kwargs["top_curve"] = top_curve_cls
+    if section_curve_cls is not None:
+        build_kwargs["section_curve_cls"] = section_curve_cls
     if args.skirt_span is not None:
         build_kwargs["skirt_span"] = args.skirt_span
-    build_kwargs["section_curve_cls"] = section_curve_cls
+    # Optional section-curve kwargs for presets; explicit kwargs could be added via code edits if needed.
+    if preset_cfg.get("section_curve_kwargs"):
+        build_kwargs["section_curve_kwargs"] = preset_cfg["section_curve_kwargs"]
+
     sections, ribs = build_bowl_ribs(lute, **build_kwargs)
 
     mold_sections = None
