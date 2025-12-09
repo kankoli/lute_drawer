@@ -61,10 +61,6 @@ class BaseSectionCurve(ABC):
         ...
 
     @abstractmethod
-    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
-        ...
-
-    @abstractmethod
     def intersect_with_plane(
         self,
         plane_normal: np.ndarray,
@@ -142,44 +138,6 @@ class CircularSectionCurve(BaseSectionCurve):
         cy, cz = map(float, self.center)
         py, pz = map(float, point_yz)
         return float(math.atan2(pz - cz, py - cy))
-
-    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
-        """Return the furthest non-negative intersection along the given direction."""
-        if self.is_degenerate:
-            return np.asarray(origin_yz, float)
-
-        cy, cz = map(float, self.center)
-        r = float(self.radius)
-        dy, dz = map(float, direction_yz)
-        if abs(dy) < _EPS and abs(dz) < _EPS:
-            raise ValueError("Direction vector is degenerate.")
-
-        coeff_a = dy * dy + dz * dz
-        coeff_b = 2.0 * (dy * (origin_yz[0] - cy) + dz * (origin_yz[1] - cz))
-        coeff_c = (origin_yz[0] - cy) ** 2 + (origin_yz[1] - cz) ** 2 - r * r
-        discriminant = coeff_b * coeff_b - 4.0 * coeff_a * coeff_c
-
-        if discriminant < -1e-7:
-            raise RuntimeError("Planar rib plane misses section curve.")
-
-        discriminant = max(0.0, discriminant)
-        sqrt_disc = math.sqrt(discriminant)
-
-        s_candidates = [
-            (-coeff_b - sqrt_disc) / (2.0 * coeff_a),
-            (-coeff_b + sqrt_disc) / (2.0 * coeff_a),
-        ]
-        s_valid = [s for s in s_candidates if s >= -1e-9]
-        if not s_valid:
-            s = max(s_candidates, key=lambda val: val)
-            if s < 0.0:
-                s = 0.0
-        else:
-            s = max(s_valid)
-            if s < 0.0:
-                s = 0.0
-
-        return np.array([origin_yz[0] + s * dy, origin_yz[1] + s * dz], dtype=float)
 
     def intersect_with_plane(
         self,
@@ -346,17 +304,6 @@ class CubicBezierSectionCurve(BaseSectionCurve):
             if -1e-6 <= t <= 1.0 + 1e-6:
                 out.append(t)
         return out
-
-    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
-        dir_vec = np.asarray(direction_yz, float)
-        if np.linalg.norm(dir_vec) <= _EPS:
-            raise ValueError("Direction vector is degenerate.")
-        dir_unit = dir_vec / (np.linalg.norm(dir_vec) + _EPS)
-        roots = self._line_roots(np.asarray(origin_yz, float), dir_vec)
-        if not roots:
-            raise RuntimeError("Planar rib plane misses section curve.")
-        best_t = max(roots, key=lambda t: float(np.dot(self.point_at_angle(t) - origin_yz, dir_unit)))
-        return self.point_at_angle(best_t)
 
     def intersect_with_plane(
         self,
@@ -547,25 +494,6 @@ class CosineArchSectionCurve(BaseSectionCurve):
             if not dedup or abs(r - dedup[-1]) > 1e-5:
                 dedup.append(r)
         return dedup
-
-    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
-        origin = np.asarray(origin_yz, float)
-        direction = np.asarray(direction_yz, float)
-        if np.linalg.norm(direction) <= _EPS:
-            raise ValueError("Direction vector is degenerate.")
-        dir_unit = direction / (np.linalg.norm(direction) + _EPS)
-
-        def _f(u: float) -> float:
-            y, z = self._yz_at(u)
-            dy = y - origin[0]
-            dz = z - origin[1]
-            return direction[0] * dz - direction[1] * dy
-
-        roots = self._find_roots(_f)
-        if not roots:
-            raise RuntimeError("Line does not intersect the cosine arch.")
-        best = max(roots, key=lambda t: float(np.dot(self._yz_at(t) - origin, dir_unit)))
-        return self._yz_at(best)
 
     def intersect_with_plane(
         self,
