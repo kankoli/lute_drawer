@@ -251,9 +251,6 @@ class CircularSectionCurve(BaseSectionCurve):
         return np.asarray(pts, float)
 
 
-__all__ = ["BaseSectionCurve", "CircularSectionCurve"]
-
-
 @dataclass(frozen=True)
 class CubicBezierSectionCurve(BaseSectionCurve):
     """
@@ -444,4 +441,191 @@ class CubicBezierSectionCurve(BaseSectionCurve):
         return np.asarray(pts, float)
 
 
-__all__ = ["BaseSectionCurve", "CircularSectionCurve", "CubicBezierSectionCurve"]
+@dataclass(frozen=True)
+class CosineArchSectionCurve(BaseSectionCurve):
+    """
+    Boxy “inverted tupperware” arch with rounded corners.
+
+    Y moves linearly between the sides with a bump to hit the apex Y,
+    Z follows a superellipse profile to stay 0 at the sides and flatten near the top.
+    Higher shape_power => squarer top with tighter corner radii.
+    """
+
+    left: np.ndarray
+    right: np.ndarray
+    apex: np.ndarray
+    shape_power: float
+    center: np.ndarray
+    radius: float
+
+    @classmethod
+    def from_span(
+        cls,
+        left_yz: np.ndarray,
+        right_yz: np.ndarray,
+        apex_yz: np.ndarray,
+        *,
+        shape_power: float = 2.2,
+        cos_power: float | None = None,
+    ) -> "CosineArchSectionCurve":
+        left = np.asarray(left_yz, float)
+        right = np.asarray(right_yz, float)
+        apex = np.asarray(apex_yz, float)
+        if left[0] > right[0]:
+            left, right = right, left
+        power = float(shape_power if cos_power is None else cos_power)
+        power = max(power, 1e-6)
+        center = np.array([0.5 * (left[0] + right[0]), 0.0], dtype=float)
+        radius = abs(right[0] - left[0]) * 0.5
+        return cls(left, right, apex, power, center, radius)
+
+    @classmethod
+    def degenerate(cls, center_yz: np.ndarray, apex_yz: np.ndarray, **_ignored) -> "CosineArchSectionCurve":
+        center = np.asarray(center_yz, float)
+        apex = np.asarray(apex_yz, float)
+        return cls(center.copy(), center.copy(), apex, 1.0, center.copy(), 0.0)
+
+    def angles(self) -> Tuple[float, float, float]:
+        return (0.0, 1.0, 0.5)
+
+    def _bump(self, t: float) -> float:
+        """Parabolic bump peaking at t=0.5, zero at ends."""
+        return 4.0 * t * (1.0 - t)
+
+    def _yz_at(self, t: float) -> np.ndarray:
+        t_clamped = min(1.0, max(0.0, float(t)))
+        y_span = self.right[0] - self.left[0]
+        y_base = self.left[0] + y_span * t_clamped
+        mid_y = 0.5 * (self.left[0] + self.right[0])
+        y = y_base + (self.apex[0] - mid_y) * self._bump(t_clamped)
+
+        x_rel = abs(2.0 * t_clamped - 1.0)  # 0 at center, 1 at sides
+        base = max(0.0, 1.0 - (x_rel ** self.shape_power))
+        z = float(self.apex[1]) * (base ** (1.0 / self.shape_power))
+        return np.array([y, z], dtype=float)
+
+    def point_at_angle(self, theta: float) -> np.ndarray:
+        return self._yz_at(theta)
+
+    def angle_of_point(self, point_yz: np.ndarray) -> float:
+        target = np.asarray(point_yz, float)
+        ts = np.linspace(0.0, 1.0, 800)
+        pts = np.vstack([self._yz_at(t) for t in ts])
+        idx = int(np.argmin(np.linalg.norm(pts - target[None, :], axis=1)))
+        return float(ts[idx])
+
+    def _find_roots(self, func, *, samples: int = 800, tol: float = 1e-9) -> list[float]:
+        us = np.linspace(0.0, 1.0, samples + 1)
+        vals = [float(func(u)) for u in us]
+        roots: list[float] = []
+        for i in range(len(us) - 1):
+            u0, u1 = us[i], us[i + 1]
+            v0, v1 = vals[i], vals[i + 1]
+            if abs(v0) <= tol:
+                roots.append(u0)
+            if v0 == 0.0:
+                continue
+            if v0 * v1 <= 0.0:
+                a, b = u0, u1
+                fa, fb = v0, v1
+                for _ in range(60):
+                    mid = 0.5 * (a + b)
+                    fm = float(func(mid))
+                    if abs(fm) < tol or abs(b - a) < tol:
+                        a = b = mid
+                        break
+                    if fa * fm <= 0.0:
+                        b, fb = mid, fm
+                    else:
+                        a, fa = mid, fm
+                roots.append(0.5 * (a + b))
+        if abs(vals[-1]) <= tol:
+            roots.append(us[-1])
+        roots.sort()
+        dedup: list[float] = []
+        for r in roots:
+            if not dedup or abs(r - dedup[-1]) > 1e-5:
+                dedup.append(r)
+        return dedup
+
+    def intersect_with_direction(self, origin_yz: np.ndarray, direction_yz: np.ndarray) -> np.ndarray:
+        origin = np.asarray(origin_yz, float)
+        direction = np.asarray(direction_yz, float)
+        if np.linalg.norm(direction) <= _EPS:
+            raise ValueError("Direction vector is degenerate.")
+        dir_unit = direction / (np.linalg.norm(direction) + _EPS)
+
+        def _f(u: float) -> float:
+            y, z = self._yz_at(u)
+            dy = y - origin[0]
+            dz = z - origin[1]
+            return direction[0] * dz - direction[1] * dy
+
+        roots = self._find_roots(_f)
+        if not roots:
+            raise RuntimeError("Line does not intersect the cosine arch.")
+        best = max(roots, key=lambda t: float(np.dot(self._yz_at(t) - origin, dir_unit)))
+        return self._yz_at(best)
+
+    def intersect_with_plane(
+        self,
+        plane_normal: np.ndarray,
+        plane_point: np.ndarray,
+        section_x: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        n = np.asarray(plane_normal, float)
+        p0 = np.asarray(plane_point, float)
+        section_term = n[0] * float(section_x)
+        offset = float(np.dot(p0, n))
+
+        def _f(u: float) -> float:
+            y, z = self._yz_at(u)
+            return section_term + n[1] * y + n[2] * z - offset
+
+        roots = self._find_roots(_f)
+        if not roots:
+            # Fall back to closest approach to avoid crashing the build.
+            samples = np.linspace(0.0, 1.0, 800)
+            vals = [abs(_f(u)) for u in samples]
+            t_best = float(samples[int(np.argmin(vals))])
+            warnings.warn(
+                "CosineArchSectionCurve.intersect_with_plane found no roots; using closest sampled point.",
+                RuntimeWarning,
+            )
+            roots = [t_best, t_best]
+        elif len(roots) == 1:
+            roots = [roots[0], roots[0]]
+        elif len(roots) > 2:
+            roots = [roots[0], roots[-1]]
+
+        pts = [self._yz_at(t) for t in roots[:2]]
+        pts_sorted = sorted(pts, key=lambda p: p[0])
+        return pts_sorted[0], pts_sorted[1]
+
+    def divide(self, count: int, *, mode: str = "angle") -> list[np.ndarray]:
+        if count < 2:
+            raise ValueError("count must be at least 2")
+        ts = np.linspace(0.0, 1.0, count)
+        return [self._yz_at(t) for t in ts]
+
+    def divide_between_points(
+        self,
+        start_yz: np.ndarray,
+        end_yz: np.ndarray,
+        count: int,
+        *,
+        mode: str = "angle",
+    ) -> list[np.ndarray]:
+        if count < 2:
+            raise ValueError("count must be at least 2")
+        t_start = self.angle_of_point(start_yz)
+        t_end = self.angle_of_point(end_yz)
+        ts = np.linspace(t_start, t_end, count)
+        return [self._yz_at(t) for t in ts]
+
+    def sample_points(self, n: int = 800) -> np.ndarray:
+        ts = np.linspace(0.0, 1.0, max(2, int(n)))
+        return np.asarray([self._yz_at(t) for t in ts], float)
+
+
+__all__ = ["BaseSectionCurve", "CircularSectionCurve", "CubicBezierSectionCurve", "CosineArchSectionCurve"]

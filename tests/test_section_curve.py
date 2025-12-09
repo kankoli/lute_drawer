@@ -1,6 +1,6 @@
 import numpy as np
 
-from lute_bowl.section_curve import CircularSectionCurve
+from lute_bowl.section_curve import CircularSectionCurve, CosineArchSectionCurve
 
 
 def test_divide_between_points_prefers_apex_when_span_reasonable():
@@ -36,3 +36,19 @@ def test_divide_between_points_avoids_full_wrap_when_apex_far():
     np.testing.assert_allclose(samples[0], start)
     np.testing.assert_allclose(samples[-1], end)
     assert span < np.pi + 1e-6
+
+
+def test_cosine_arch_hits_anchors_and_stays_above_plane():
+    left = np.array([-150.0, 0.0])
+    right = np.array([150.0, 0.0])
+    apex = np.array([0.0, 50.0])
+    curve = CosineArchSectionCurve.from_span(left, right, apex, cos_power=0.6)
+
+    np.testing.assert_allclose(curve.point_at_angle(0.0), left)
+    np.testing.assert_allclose(curve.point_at_angle(1.0), right)
+    apex_pt = curve.point_at_angle(0.5)
+    np.testing.assert_allclose(apex_pt[0], apex[0])
+    assert apex_pt[1] >= 0.99 * apex[1]
+
+    samples = curve.sample_points(200)
+    assert samples[:, 1].min() >= -1e-6
