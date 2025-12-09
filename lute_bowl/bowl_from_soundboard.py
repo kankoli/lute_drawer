@@ -293,6 +293,7 @@ def _derive_planar_ribs(
     skirt_span = max(0.0, float(skirt_span))
     span = x_end - x_start
     has_skirts = skirt_span > _EPS and skirt_span < span - _EPS
+    rib_count = int(n_ribs) + 1
     baseline_start = np.array([x_start, float(_spine_point_at_X(lute, x_start)), 0.0], dtype=float)
 
     if not has_skirts:
@@ -316,33 +317,97 @@ def _derive_planar_ribs(
 
     eye_x = eye_x if eye_x is not None else (x_end - skirt_span)
     eye_x = min(max(eye_x, x_start), x_end)
-    eye_point = np.array(
-        [eye_x, float(_spine_point_at_X(lute, eye_x)), float(z_top(eye_x))],
-        dtype=float,
-    )
+    spine_eye = float(_spine_point_at_X(lute, eye_x))
+    eye_point = np.array([eye_x, spine_eye, float(z_top(eye_x))], dtype=float)
     tail_point = _spine_point_xyz(lute, x_end)
-    skirt_indices = {0, int(n_ribs)}
+    skirt_indices = {0, rib_count - 1}
 
     sections_to_eye = [s for s in sections if float(s.x) <= eye_x + 1e-9]
-    ribs_to_eye = _derive_planar_ribs_base(
+    neck_section = sections_to_eye[0]
+    neck_samples = neck_section.curve.divide(rib_count, mode=division_mode)
+    v1 = np.array([x_start, neck_samples[1][0], neck_samples[1][1]], dtype=float) - eye_point
+    v2 = np.array([x_start, neck_samples[-2][0], neck_samples[-2][1]], dtype=float) - eye_point
+    eye_normal = np.cross(v1, v2)
+    norm_eye = np.linalg.norm(eye_normal)
+    if norm_eye <= _EPS:
+        raise ValueError("Eye plane is degenerate; adjust skirt span or geometry.")
+    eye_normal /= norm_eye
+    setattr(
         lute,
-        sections_to_eye,
-        n_ribs,
-        x_start,
-        eye_x,
-        division_mode=division_mode,
-        baseline_start=baseline_start,
-        baseline_end=eye_point,
-        debug_rib_indices=debug_rib_indices,
-        debug_logger=debug_logger,
-        debug_plot=debug_plot,
+        "eye_plane_info",
+        {
+            "point": eye_point.copy(),
+            "normal": eye_normal.copy(),
+            "triangle": [
+                np.array([x_start, neck_samples[1][0], neck_samples[1][1]], dtype=float),
+                np.array([x_start, neck_samples[-2][0], neck_samples[-2][1]], dtype=float),
+                eye_point.copy(),
+            ],
+        },
     )
 
-    anchors_yz: List[np.ndarray] = []
-    for rib in ribs_to_eye:
-        anchors_yz.append(np.array([float(rib[-1][1]), float(rib[-1][2])], dtype=float))
+    # Build rib planes and samples bounded by the eye plane on the reference section.
+    radii_eye = [float(section.radius) for section in sections_to_eye]
+    ref_idx_eye = int(np.argmax(radii_eye))
+    ref_section_eye = sections_to_eye[ref_idx_eye]
+    ref_x_eye = float(ref_section_eye.x)
+    left_eye, right_eye = ref_section_eye.curve.intersect_with_plane(eye_normal, eye_point, ref_x_eye)
+    ref_samples_eye = ref_section_eye.curve.divide_between_points(left_eye, right_eye, rib_count, mode=division_mode)
 
-    ribs: List[List[np.ndarray]] = [list(map(np.array, rib.tolist())) for rib in ribs_to_eye]
+    baseline_end = eye_point
+    baseline_vector = baseline_end - baseline_start
+    if np.linalg.norm(baseline_vector) <= _EPS:
+        raise ValueError("Baseline vector collapsed after applying end blocks.")
+
+    def _baseline_point(x: float) -> np.ndarray:
+        if abs(baseline_vector[0]) > _EPS:
+            t = (x - baseline_start[0]) / baseline_vector[0]
+        else:
+            t = (x - baseline_start[0]) / (baseline_vector[0] + _EPS)
+        return baseline_start + t * baseline_vector
+
+    rib_planes: List[RibPlane] = []
+    ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
+
+    for y_ref, z_ref in ref_samples_eye:
+        reference_point = np.array([ref_x_eye, y_ref, z_ref], dtype=float)
+        plane_normal = np.cross(baseline_vector, reference_point - baseline_start)
+        norm_len = np.linalg.norm(plane_normal)
+        if norm_len <= _EPS:
+            raise ValueError("Degenerate plane encountered while constructing rib.")
+        plane_normal /= norm_len
+        rib_planes.append(RibPlane(plane_normal, np.array([y_ref, z_ref], dtype=float)))
+
+    for section in sections_to_eye:
+        x = float(section.x)
+        r = float(section.radius)
+        base_point = _baseline_point(x)
+        base_yz = np.array([float(base_point[1]), float(base_point[2])], dtype=float)
+
+        if r <= _EPS:
+            for trace in ribs:
+                trace.append(np.array([x, base_yz[0], base_yz[1]], dtype=float))
+            continue
+
+        for idx_rib, (plane, trace) in enumerate(zip(rib_planes, ribs)):
+            left_yz, right_yz = section.curve.intersect_with_plane(
+                plane.normal,
+                baseline_start,
+                float(section.x),
+            )
+
+            candidates = [np.asarray(left_yz, float), np.asarray(right_yz, float)]
+            target_yz = (
+                np.array([trace[-1][1], trace[-1][2]], dtype=float)
+                if trace
+                else plane.reference_yz
+            )
+            yz_point = min(candidates, key=lambda p: float(np.linalg.norm(p - target_yz)))
+            trace.append(np.array([x, yz_point[0], yz_point[1]], dtype=float))
+
+    anchors_yz: List[np.ndarray] = []
+    for rib in ribs:
+        anchors_yz.append(np.array([float(rib[-1][1]), float(rib[-1][2])], dtype=float))
 
     for section in sections:
         x = float(section.x)
@@ -351,7 +416,7 @@ def _derive_planar_ribs(
 
         t_line = (x - eye_x) / max(x_end - eye_x, _EPS)
         t_line = max(0.0, min(1.0, t_line))
-        for idx in range(int(n_ribs) + 1):
+        for idx in range(rib_count):
             if idx in skirt_indices:
                 anchor = anchors_yz[idx]
                 yz_end = np.array([tail_point[1], tail_point[2]], dtype=float)
@@ -489,4 +554,3 @@ def _derive_planar_ribs_base(
             trace.append(np.array([x, yz_point[0], yz_point[1]], dtype=float))
 
     return [np.asarray(trace, dtype=float) for trace in ribs]
-
