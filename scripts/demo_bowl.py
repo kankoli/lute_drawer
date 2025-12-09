@@ -33,11 +33,10 @@ PRESETS = {
     },
     "turkish-oud-skirted": {
         "lute": "lute_soundboard.TurkishOud2_2",
-        "top_curve": "lute_bowl.top_curves.DeepBackCurve",
-        "section_curve": "lute_bowl.section_curve.CosineArchSectionCurve",
-        "section_curve_kwargs": {"shape_power": 2.2},
-        "skirt_span": 1.5,
         "n_ribs": 21,
+        "top_curve": "lute_bowl.top_curves.DeepBackCurve",
+        "section_curve": "lute_bowl.section_curve.CircularSectionCurve",
+        "skirt_span": 1.2,
     },
 }
 

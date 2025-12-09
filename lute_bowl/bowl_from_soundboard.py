@@ -478,68 +478,72 @@ def _derive_planar_ribs_skirt(
     if float(neck_section.radius) <= _EPS or float(eye_section.radius) <= _EPS:
         raise ValueError("Neck or eye section radius must be positive for skirt ribs.")
 
+    neck_points = []
+    for y_neck, z_neck in neck_section.curve.divide(rib_count, mode=division_mode):
+        neck_points.append(np.array([x_start, y_neck, z_neck], dtype=float))
+
     eye_point = _spine_point_xyz(lute, eye_x)
     eye_point[2] = max(float(z_top(eye_x)), 0.0)
     tail_point = _spine_point_xyz(lute, x_end)
     skirt_indices = {0, rib_count - 1}
 
-    debug_ribs = set(debug_rib_indices or [])
-    log = debug_logger if debug_logger is not None else (lambda _msg: None)
-
-    sections_to_eye = [s for s in sections if float(s.x) <= eye_x + 1e-9]
-    ribs_to_eye = _derive_planar_ribs_base(
+    v1 = neck_points[1] - eye_point
+    v2 = neck_points[-2] - eye_point
+    eye_normal = np.cross(v1, v2)
+    norm_eye = np.linalg.norm(eye_normal)
+    if norm_eye <= _EPS:
+        raise ValueError("Eye plane is degenerate; adjust skirt span or geometry.")
+    eye_normal /= norm_eye
+    setattr(
         lute,
-        sections_to_eye,
-        n_ribs,
-        x_start,
-        eye_x,
-        division_mode=division_mode,
-        baseline_end=eye_point,
-        debug_rib_indices=debug_rib_indices,
-        debug_logger=debug_logger,
-        debug_plot=debug_plot,
+        "eye_plane_info",
+        {
+            "point": eye_point.copy(),
+            "normal": eye_normal.copy(),
+            "triangle": [
+                neck_points[1].copy(),
+                neck_points[-2].copy(),
+                eye_point.copy(),
+            ],
+        },
     )
 
-    anchors_yz: List[np.ndarray] = []
-    for rib in ribs_to_eye:
-        anchors_yz.append(np.array([float(rib[-1][1]), float(rib[-1][2])], dtype=float))
-
-    ribs: List[List[np.ndarray]] = [list(map(np.array, rib.tolist())) for rib in ribs_to_eye]
+    ribs: List[List[np.ndarray]] = [[] for _ in range(rib_count)]
+    anchors_yz: List[np.ndarray | None] = [None for _ in range(rib_count)]
 
     for section in sections:
         x = float(section.x)
-        if x <= eye_x + 1e-9:
+
+        if x > eye_x + 1e-9:
+            t_line = (x - eye_x) / max(x_end - eye_x, _EPS)
+            t_line = max(0.0, min(1.0, t_line))
+            for idx in range(rib_count):
+                if idx in skirt_indices:
+                    anchor = anchors_yz[idx] if anchors_yz[idx] is not None else np.array([eye_point[1], eye_point[2]])
+                    yz_end = np.array([tail_point[1], tail_point[2]], dtype=float)
+                    yz = anchor + t_line * (yz_end - anchor)
+                    ribs[idx].append(np.array([x, yz[0], yz[1]], dtype=float))
+                else:
+                    anchor = anchors_yz[idx]
+                    if anchor is None:
+                        raise RuntimeError("Missing eye anchor for interior rib.")
+                    ribs[idx].append(np.array([x, anchor[0], anchor[1]], dtype=float))
             continue
 
-        t_line = (x - eye_x) / max(x_end - eye_x, _EPS)
-        t_line = max(0.0, min(1.0, t_line))
-        for idx in range(rib_count):
-            if idx in skirt_indices:
-                anchor = anchors_yz[idx]
-                yz_end = np.array([tail_point[1], tail_point[2]], dtype=float)
-                yz = anchor + t_line * (yz_end - anchor)
+        if float(section.radius) <= _EPS:
+            yz = np.array([float(_spine_point_at_X(lute, x)), 0.0], dtype=float)
+            for idx in range(rib_count):
                 ribs[idx].append(np.array([x, yz[0], yz[1]], dtype=float))
-            else:
-                anchor = anchors_yz[idx]
-                ribs[idx].append(np.array([x, anchor[0], anchor[1]], dtype=float))
-            if (idx + 1) in debug_ribs:
-                log(
-                    f"rib={idx+1} x={x:.4f} anchor={(float(anchors_yz[idx][0]), float(anchors_yz[idx][1]))} "
-                    f"t_line={t_line:.3f}"
-                )
-                if debug_plot:
-                    try:
-                        import matplotlib.pyplot as plt
-                    except Exception:
-                        continue
-                    fig, ax = plt.subplots(figsize=(5, 4))
-                    ax.plot([float(eye_x), x_end], [anchor[0], tail_point[1]], "k--", alpha=0.6, label="skirt line")
-                    ax.scatter([x], [yz[0]], c="tab:red", s=40, label="rib point")
-                    ax.set_xlabel("X")
-                    ax.set_ylabel("Y on skirt")
-                    ax.legend()
-                    ax.set_title(f"Skirt rib {idx+1} at X={x:.3f}")
-                    plt.show()
+            continue
+
+        left_yz, right_yz = section.curve.intersect_with_plane(eye_normal, eye_point, float(section.x))
+        samples = section.curve.divide_between_points(left_yz, right_yz, rib_count, mode=division_mode)
+
+        for idx, yz in enumerate(samples):
+            pt = np.array([x, yz[0], yz[1]], dtype=float)
+            ribs[idx].append(pt)
+            if abs(x - eye_x) <= 1e-8:
+                anchors_yz[idx] = np.array([yz[0], yz[1]], dtype=float)
 
     # Replace outermost ribs with soundboard outlines (projected on Z=0) to lock boundaries.
     boundary_left: list[np.ndarray] = []
