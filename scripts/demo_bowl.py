@@ -8,16 +8,30 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.rib_builder import build_bowl_ribs
+from lute_bowl.rib_form_builder import (
+    all_rib_surfaces_convex,
+    build_rib_surfaces,
+    find_rib_side_planes,
+    measure_rib_plane_deviation,
+)
 from lute_bowl.mold_builder import build_mold_sections
 from lute_bowl.top_curves import TopCurve
 from lute_bowl import section_curve as section_curve_mod
 from plotting import plot_bowl, plot_mold_sections_2d
 from plotting.step_renderers import write_mold_sections_step
+from plotting.ribs import (
+    plot_rib_surface_with_planes,
+    save_plane_projection_png,
+    build_panel_projections,
+    compute_panel_frame,
+)
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
@@ -150,6 +164,45 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=sorted(PRESETS.keys()),
         help="Optional named preset; explicit flags override preset values.",
     )
+    parser.add_argument(
+        "--plot-rib-planes",
+        action="store_true",
+        help="Plot rib surfaces with their side planes (former demo_rib_planes.py).",
+    )
+    parser.add_argument(
+        "--rib-index",
+        type=int,
+        default=None,
+        help="Rib index (1-based) to visualize; omit to process all ribs when plotting rib planes.",
+    )
+    parser.add_argument(
+        "--plane-png",
+        action="store_true",
+        help="Save a PNG of each plane with the projected outlines (rib-planes mode).",
+    )
+    parser.add_argument(
+        "--plane-gap-mm",
+        type=float,
+        default=60.0,
+        help="Spacing between the two planes (mm) in rib-planes mode. Use zero/negative to match rib width.",
+    )
+    parser.add_argument(
+        "--panel-pad-mm",
+        type=float,
+        default=20.0,
+        help="Padding around panel projections in rib-planes mode (mm).",
+    )
+    parser.add_argument(
+        "--min-panel-in",
+        type=float,
+        default=2.0,
+        help="Minimum panel size in inches for rib-planes mode.",
+    )
+    parser.add_argument(
+        "--title",
+        default=None,
+        help="Optional title override for rib-planes plots.",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
@@ -200,61 +253,169 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     sections, ribs = build_bowl_ribs(lute, **build_kwargs)
 
-    mold_sections = None
-    if args.build_molds or args.step_out is not None or args.plot2d:
-        mold_sections = build_mold_sections(
-            sections=sections,
-            ribs=ribs,
-            n_stations=args.stations,
-            board_thickness_mm=args.thickness,
-            lute=lute,
-            neck_limit=args.neck_limit,
-            tail_limit=args.tail_limit,
+    if args.plot_rib_planes:
+        _run_rib_planes_mode(lute, ribs, args)
+    else:
+        mold_sections = None
+        if args.build_molds or args.step_out is not None or args.plot2d:
+            mold_sections = build_mold_sections(
+                sections=sections,
+                ribs=ribs,
+                n_stations=args.stations,
+                board_thickness_mm=args.thickness,
+                lute=lute,
+                neck_limit=args.neck_limit,
+                tail_limit=args.tail_limit,
+            )
+
+            if args.step_out is not None:
+                scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+                step_path = write_mold_sections_step(
+                    mold_sections,
+                    args.step_out,
+                    unit_scale=scale,
+                    author="demo_planar_bowl",
+                    organization="lute_drawer",
+                )
+                print(f"STEP export written to {step_path}")
+
+            if args.plot2d or args.plot2d_section:
+                plot_mold_sections_2d(
+                    mold_sections,
+                    section_index=args.plot2d_section,
+                    form_top=lute.form_top,
+                    form_bottom=lute.form_bottom,
+                    lute_name=type(lute).__name__,
+                )
+
+        show_circles = False
+        if args.show_section_circles:
+            if len(sections) <= 80:
+                show_circles = True
+            else:
+                print("Warning: Section circles not shown because more than 80 sections were sampled.")
+
+        plot_bowl(
+            lute,
+            sections,
+            ribs,
+            show_section_circles=show_circles,
+            show_top_curve=args.show_top_curve,
+            top_curve_name=getattr(lute, "top_curve_label", None),
+            show_eye_plane=args.show_eye_plane,
+            mold_sections=mold_sections,
         )
 
-        if args.step_out is not None:
-            scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
-            step_path = write_mold_sections_step(
-                mold_sections,
-                args.step_out,
-                unit_scale=scale,
-                author="demo_planar_bowl",
-                organization="lute_drawer",
-            )
-            print(f"STEP export written to {step_path}")
+        import matplotlib.pyplot as plt
 
-        if args.plot2d or args.plot2d_section:
-            plot_mold_sections_2d(
-                mold_sections,
-                section_index=args.plot2d_section,
-                form_top=lute.form_top,
-                form_bottom=lute.form_bottom,
-                lute_name=type(lute).__name__,
-            )
-
-    show_circles = False
-    if args.show_section_circles:
-        if len(sections) <= 80:
-            show_circles = True
-        else:
-            print("Warning: Section circles not shown because more than 80 sections were sampled.")
-
-    plot_bowl(
-        lute,
-        sections,
-        ribs,
-        show_section_circles=show_circles,
-        show_top_curve=args.show_top_curve,
-        top_curve_name=getattr(lute, "top_curve_label", None),
-        show_eye_plane=args.show_eye_plane,
-        mold_sections=mold_sections,
-    )
-
-    import matplotlib.pyplot as plt
-
-    plt.show()
+        plt.show()
     return 0
 
+
+def _run_rib_planes_mode(lute, rib_outlines, args: argparse.Namespace) -> None:
+    """Rib-plane plotting/export (formerly demo_rib_planes.py)."""
+    rib_targets: list[int] | None = None if args.rib_index is None else [args.rib_index]
+    surfaces = build_rib_surfaces(rib_outlines=rib_outlines, rib_index=rib_targets)
+    if not surfaces:
+        raise RuntimeError("No surfaces returned for requested rib indices")
+
+    unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+    gap_value = args.plane_gap_mm if args.plane_gap_mm is not None and args.plane_gap_mm > 0 else None
+
+    if all_rib_surfaces_convex(
+        rib_outlines=rib_outlines,
+        plane_gap_mm=gap_value,
+        unit_scale=unit_scale,
+    ):
+        print("all convex")
+
+    curve_label = getattr(lute, "top_curve_label", type(lute).__name__)
+    saved_paths: list[tuple[Path, Path]] = []
+
+    PAD_MM = args.panel_pad_mm
+    MIN_PANEL_IN = args.min_panel_in
+    MM_PER_INCH = 25.4
+
+    rib_data: list[
+        tuple[int, tuple[np.ndarray, np.ndarray], np.ndarray, np.ndarray, list]
+    ] = []
+    max_frame_w = 0.0
+    max_frame_h = 0.0
+
+    for rib_idx, quads in surfaces:
+        outlines = (
+            np.asarray(rib_outlines[rib_idx - 1], dtype=float),
+            np.asarray(rib_outlines[rib_idx], dtype=float),
+        )
+        planes = find_rib_side_planes(
+            rib_outlines=rib_outlines,
+            rib_index=rib_idx,
+            plane_gap_mm=gap_value,
+            unit_scale=unit_scale,
+        )
+
+        panel_projections = build_panel_projections(outlines, planes, unit_scale)
+        frame_w, frame_h = compute_panel_frame(
+            panel_projections, PAD_MM, MIN_PANEL_IN, MM_PER_INCH, override=None
+        )
+        max_frame_w = max(max_frame_w, frame_w)
+        max_frame_h = max(max_frame_h, frame_h)
+
+        rib_data.append((rib_idx, outlines, planes, quads, panel_projections))
+
+    frame_size_mm = (max_frame_w, max_frame_h)
+
+    for rib_idx, outlines, planes, quads, panel_projections in rib_data:
+        if args.plane_png:
+            plane_dir = Path("output") / "rib_planes"
+            plane_dir.mkdir(parents=True, exist_ok=True)
+            name_parts = [type(lute).__name__, str(len(rib_outlines) - 1), f"index{rib_idx}", curve_label]
+            plane_path = plane_dir / ("_".join(name_parts) + ".png")
+            left_path, right_path = save_plane_projection_png(
+                plane_path,
+                outlines,
+                planes,
+                unit_scale=unit_scale,
+                title=f"{type(lute).__name__} Rib {rib_idx} Planes",
+                frame_size_mm=frame_size_mm,
+                pad_mm=PAD_MM,
+                panel_projections=panel_projections,
+            )
+            saved_paths.append((left_path, right_path))
+
+        deviation = measure_rib_plane_deviation(
+            rib_outlines=rib_outlines,
+            rib_index=rib_idx,
+            plane_gap_mm=gap_value,
+            unit_scale=unit_scale,
+        )
+        to_mm = unit_scale
+        if deviation.long_deltas.size:
+            long_stats = deviation.long_deltas * to_mm
+            height_stats = deviation.height_deltas * to_mm
+            print(
+                f"Rib {rib_idx} plane deviation — long axis max {long_stats.max():.3f} mm, "
+                f"height axis max {height_stats.max():.3f} mm"
+            )
+
+        if not args.plane_png:
+            plot_rib_surface_with_planes(
+                rib_idx,
+                quads,
+                outlines,
+                planes,
+                title=args.title,
+                lute_name=type(lute).__name__,
+                panel_projections=panel_projections,
+            )
+
+    if args.plane_png and saved_paths:
+        if args.rib_index is None:
+            folder = saved_paths[0][0].parent
+            print(f"Plane projection PNGs saved under {folder}")
+        else:
+            left_path, right_path = saved_paths[0]
+            print(f"Plane projection PNGs saved to {left_path} and {right_path}")
 
 if __name__ == "__main__":
     raise SystemExit(main())
