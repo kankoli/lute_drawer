@@ -292,14 +292,26 @@ def save_plane_projection_png(
 
     frame_size_mm = compute_panel_frame(panel_projections, pad_mm, MIN_PANEL_IN, MM_PER_INCH, frame_size_mm)
 
-    for proj, side_path, panel_label in zip(panel_projections, paths, panel_labels, strict=False):
+    # Use a common translation so left/right outlines retain their relative positioning.
+    global_x_min = float("inf")
+    global_x_max = float("-inf")
+    global_y_min = float("inf")
+    global_y_max = float("-inf")
+    for proj in panel_projections:
         if proj is None:
             continue
         x_min, x_max, y_min, y_max = proj.bbox_2d
+        global_x_min = min(global_x_min, x_min)
+        global_x_max = max(global_x_max, x_max)
+        global_y_min = min(global_y_min, y_min)
+        global_y_max = max(global_y_max, y_max)
 
-        # Translate so left edge is at pad_mm and top edge at frame_h_mm - pad_mm.
-        shift_x = pad_mm - x_min
-        shift_y = frame_size_mm[1] - pad_mm - y_max
+    shift_x = pad_mm - global_x_min
+    shift_y = frame_size_mm[1] - pad_mm - global_y_max
+
+    for proj, side_path, panel_label in zip(panel_projections, paths, panel_labels, strict=False):
+        if proj is None:
+            continue
         coords_outline = proj.plane_outline_2d + np.array([shift_x, shift_y])
         plane_coords = proj.plane_corners_2d + np.array([shift_x, shift_y])
 
