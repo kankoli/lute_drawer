@@ -266,6 +266,18 @@ def project_points_to_plane(points: np.ndarray, plane: RibSidePlane) -> np.ndarr
     return points - np.outer(offsets, normal)
 
 
+def line_plane_intersection(p0: np.ndarray, p1: np.ndarray, plane: RibSidePlane) -> np.ndarray | None:
+    """Return the intersection of the infinite line p0->p1 with plane, or None if parallel."""
+    p0 = np.asarray(p0, float)
+    p1 = np.asarray(p1, float)
+    n = plane.normal
+    denom = float(np.dot(n, p1 - p0))
+    if abs(denom) < EPS:
+        return None
+    t = float(np.dot(n, plane.point - p0) / denom)
+    return p0 + t * (p1 - p0)
+
+
 def all_rib_surfaces_convex(
     *,
     rib_outlines: Sequence[np.ndarray],

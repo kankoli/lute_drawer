@@ -11,7 +11,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from lute_bowl.rib_form_builder import RibSidePlane, project_points_to_plane
+from lute_bowl.rib_form_builder import (
+    RibSidePlane,
+    project_points_to_plane,
+    line_plane_intersection,
+)
 
 from .bowl import set_axes_equal_3d
 
@@ -196,13 +200,34 @@ def build_panel_projections(
     panel_projections: list[PanelProjection | None] = []
     plane_order = [p for p in planes[:2]]
 
-    for plane, outline in zip(plane_order, outline_pair, strict=False):
+    for idx, (plane, outline) in enumerate(zip(plane_order, outline_pair, strict=False)):
         if plane is None:
             panel_projections.append(None)
             continue
         outline_arr = np.asarray(outline, dtype=float)
-        projected_3d = project_points_to_plane(outline_arr, plane)
-        plane_outline = _project_to_plane_coords(outline_arr, plane, unit_scale)
+
+        # Build an outline from intersections of rib connectors with this plane.
+        intersections: list[np.ndarray] = []
+        other = outline_pair[1 - idx]
+        other_arr = np.asarray(other, float)
+        if outline_arr.shape == other_arr.shape and outline_arr.shape[0] == other_arr.shape[0]:
+            for p0, p1 in zip(outline_arr, other_arr, strict=False):
+                hit = line_plane_intersection(p0, p1, plane)
+                if hit is not None:
+                    intersections.append(hit)
+                else:
+                    # Log and fall back to projecting the midpoint if nearly parallel.
+                    mid = 0.5 * (p0 + p1)
+                    fallback = project_points_to_plane(np.array([mid]), plane)[0]
+                    intersections.append(fallback)
+                    print(
+                        f"[rib-plane] connector failed to intersect plane; using midpoint projection. "
+                        f"plane_norm={plane.normal}, p0={p0}, p1={p1}"
+                    )
+        source_outline = np.asarray(intersections, float)
+
+        projected_3d = project_points_to_plane(source_outline, plane)
+        plane_outline = _project_to_plane_coords(source_outline, plane, unit_scale)
         plane_corners = _project_to_plane_coords(plane.corners, plane, unit_scale)
         combined = np.vstack([plane_outline, plane_corners])
         x_min, x_max = combined[:, 0].min(), combined[:, 0].max()
