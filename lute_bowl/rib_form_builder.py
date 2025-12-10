@@ -193,6 +193,9 @@ def _derive_side_planes(
     height_center = 0.5 * (height_min + height_max)
     long_half = 0.5 * (long_max - long_min)
     height_half = 0.5 * (height_max - height_min)
+    # Enlarge the panel rectangle slightly so tips don’t run outside the plane plot.
+    long_half *= 1.05
+    height_half *= 1.05
 
     def _center_point(point: np.ndarray) -> np.ndarray:
         centered = point.astype(float).copy()
