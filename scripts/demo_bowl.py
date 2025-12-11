@@ -190,7 +190,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--plane-gap-mm",
         type=float,
-        default=60.0,
+        default=18.0,
         help="Spacing between the two planes (mm) in rib-planes mode. Use zero/negative to match rib width.",
     )
     parser.add_argument(
