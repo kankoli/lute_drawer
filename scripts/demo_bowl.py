@@ -52,6 +52,13 @@ PRESETS = {
         "section_curve": "lute_bowl.section_curve.CircularSectionCurve",
         "skirt_span": 1.2,
     },
+    "lavta-skirted": {
+        "lute": "lute_soundboard.ManolLavta",
+        "n_ribs": 11,
+        "top_curve": "lute_bowl.top_curves.FlatBackCurve",
+        "section_curve": "lute_bowl.section_curve.CircularSectionCurve",
+        "skirt_span": 1.2,
+    },
 }
 
 
