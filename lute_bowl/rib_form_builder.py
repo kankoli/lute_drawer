@@ -284,6 +284,7 @@ def all_rib_surfaces_convex(
     plane_gap_mm: float | None = 60.0,
     unit_scale: float = 1.0,
     atol: float = 1e-6,
+    verbose: bool = False,
 ) -> bool:
     """Return True when every rib surface is convex relative to its side planes."""
 
@@ -331,7 +332,7 @@ def all_rib_surfaces_convex(
         if not rib_convex:
             non_convex.append(rib_idx)
 
-    if non_convex:
+    if non_convex and verbose:
         ribs = ", ".join(str(idx) for idx in non_convex)
         print(f"Non-convex ribs: {ribs}")
         return False

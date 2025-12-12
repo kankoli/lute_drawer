@@ -211,6 +211,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional title override for rib-planes plots.",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print rib-plane metrics (blank widths, projection deltas).",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
@@ -334,6 +340,7 @@ def _run_rib_planes_mode(lute, rib_outlines, args: argparse.Namespace) -> None:
         rib_outlines=rib_outlines,
         plane_gap_mm=gap_value,
         unit_scale=unit_scale,
+        verbose=args.verbose,
     ):
         print("all convex")
 
@@ -362,7 +369,7 @@ def _run_rib_planes_mode(lute, rib_outlines, args: argparse.Namespace) -> None:
             unit_scale=unit_scale,
         )
 
-        panel_projections = build_panel_projections(outlines, planes, unit_scale)
+        panel_projections = build_panel_projections(outlines, planes, unit_scale, verbose=args.verbose)
         frame_w, frame_h = compute_panel_frame(
             panel_projections, PAD_MM, MIN_PANEL_IN, MM_PER_INCH, override=None
         )
@@ -391,23 +398,24 @@ def _run_rib_planes_mode(lute, rib_outlines, args: argparse.Namespace) -> None:
             )
             saved_paths.append((left_path, right_path))
 
-        deviation = measure_rib_plane_deviation(
-            rib_outlines=rib_outlines,
-            rib_index=rib_idx,
-            plane_gap_mm=gap_value,
-            unit_scale=unit_scale,
-        )
-        blank_width_units = compute_rib_blank_width(rib_outlines=rib_outlines, rib_index=rib_idx)
-        blank_width_mm = blank_width_units * unit_scale
-        print(f"Rib {rib_idx}: blank width {blank_width_units:.3f} units ({blank_width_mm:.1f} mm)")
-        to_mm = unit_scale
-        if deviation.long_deltas.size:
-            long_stats = deviation.long_deltas * to_mm
-            height_stats = deviation.height_deltas * to_mm
-            print(
-                f"Rib {rib_idx} plane deviation — long axis max {long_stats.max():.3f} mm, "
-                f"height axis max {height_stats.max():.3f} mm"
+        if args.verbose:
+            deviation = measure_rib_plane_deviation(
+                rib_outlines=rib_outlines,
+                rib_index=rib_idx,
+                plane_gap_mm=gap_value,
+                unit_scale=unit_scale,
             )
+            blank_width_units = compute_rib_blank_width(rib_outlines=rib_outlines, rib_index=rib_idx)
+            blank_width_mm = blank_width_units * unit_scale
+            print(f"Rib {rib_idx}: blank width {blank_width_units:.3f} units ({blank_width_mm:.1f} mm)")
+            to_mm = unit_scale
+            if deviation.long_deltas.size:
+                long_stats = deviation.long_deltas * to_mm
+                height_stats = deviation.height_deltas * to_mm
+                print(
+                    f"Rib {rib_idx} plane deviation — long axis max {long_stats.max():.3f} mm, "
+                    f"height axis max {height_stats.max():.3f} mm"
+                )
 
         if not args.plane_png:
             plot_rib_surface_with_planes(

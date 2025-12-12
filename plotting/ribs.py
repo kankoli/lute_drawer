@@ -196,6 +196,8 @@ def build_panel_projections(
     outline_pair: Sequence[np.ndarray],
     planes: Sequence[RibSidePlane],
     unit_scale: float,
+    *,
+    verbose: bool = False,
 ) -> list[PanelProjection | None]:
     panel_projections: list[PanelProjection | None] = []
     plane_order = [p for p in planes[:2]]
@@ -220,10 +222,11 @@ def build_panel_projections(
                     mid = 0.5 * (p0 + p1)
                     fallback = project_points_to_plane(np.array([mid]), plane)[0]
                     intersections.append(fallback)
-                    print(
-                        f"[rib-plane] connector failed to intersect plane; using midpoint projection. "
-                        f"plane_norm={plane.normal}, p0={p0}, p1={p1}"
-                    )
+                    if verbose:
+                        print(
+                            f"[rib-plane] connector failed to intersect plane; using midpoint projection. "
+                            f"plane_norm={plane.normal}, p0={p0}, p1={p1}"
+                        )
         source_outline = np.asarray(intersections, float)
 
         projected_3d = project_points_to_plane(source_outline, plane)

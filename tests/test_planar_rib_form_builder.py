@@ -144,6 +144,7 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
                 rib_outlines=rib_outlines,
                 plane_gap_mm=None,
                 unit_scale=1.0,
+                verbose=True,
             )
         )
 
@@ -169,6 +170,7 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
                 rib_outlines=rib_outlines,
                 plane_gap_mm=None,
                 unit_scale=1.0,
+                verbose=True,
             )
         self.assertFalse(result)
         self.assertIn("Non-convex ribs: 1", buffer.getvalue())
