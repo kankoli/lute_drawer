@@ -39,6 +39,7 @@ from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.rib_form_builder import (
     all_rib_surfaces_convex,
     build_rib_surfaces,
+    compute_rib_blank_width,
     find_rib_side_planes,
     measure_rib_plane_deviation,
 )
@@ -198,6 +199,42 @@ class PlanarRibFormBuilderTests(unittest.TestCase):
         self.assertEqual(deviation.height_deltas.shape, (3,))
         self.assertAlmostEqual(float(deviation.long_deltas[1]), 0.0, places=6)
         self.assertGreater(float(deviation.height_deltas[1]), 0.0)
+
+    def test_compute_rib_blank_width(self):
+        outline_a = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ]
+        )
+        outline_b = np.array(
+            [
+                [0.0, 2.0, 0.0],
+                [1.0, 2.0, 0.0],
+                [2.0, 2.0, 0.0],
+            ]
+        )
+        rib_outlines = [outline_a, outline_b]
+        self.assertAlmostEqual(
+            compute_rib_blank_width(rib_outlines=rib_outlines, rib_index=1),
+            2.0,
+            places=6,
+        )
+
+        outline_b_slanted = np.array(
+            [
+                [0.0, 1.0, 0.0],
+                [1.0, 2.0, 0.0],
+                [2.0, 3.0, 0.0],
+            ]
+        )
+        rib_outlines_slanted = [outline_a, outline_b_slanted]
+        self.assertAlmostEqual(
+            compute_rib_blank_width(rib_outlines=rib_outlines_slanted, rib_index=1),
+            3.0,
+            places=6,
+        )
 
 
 if __name__ == "__main__":

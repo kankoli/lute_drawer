@@ -18,6 +18,7 @@ from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.rib_form_builder import (
     all_rib_surfaces_convex,
     build_rib_surfaces,
+    compute_rib_blank_width,
     find_rib_side_planes,
     measure_rib_plane_deviation,
 )
@@ -396,6 +397,9 @@ def _run_rib_planes_mode(lute, rib_outlines, args: argparse.Namespace) -> None:
             plane_gap_mm=gap_value,
             unit_scale=unit_scale,
         )
+        blank_width_units = compute_rib_blank_width(rib_outlines=rib_outlines, rib_index=rib_idx)
+        blank_width_mm = blank_width_units * unit_scale
+        print(f"Rib {rib_idx}: blank width {blank_width_units:.3f} units ({blank_width_mm:.1f} mm)")
         to_mm = unit_scale
         if deviation.long_deltas.size:
             long_stats = deviation.long_deltas * to_mm

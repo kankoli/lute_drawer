@@ -387,12 +387,61 @@ def measure_rib_plane_deviation(
     )
 
 
+def compute_rib_blank_width(
+    *,
+    rib_outlines: Sequence[np.ndarray],
+    rib_index: int,
+) -> float:
+    """Return the minimum flat blank width required for a rib.
+
+    The blank is assumed straight and allowed to bend along its length (wide face)
+    but not stretch across its width. The width direction is anchored to the
+    widest connector between outlines and orthogonalized against the rib's
+    overall long axis to mimic a flat board."""
+
+    if rib_index <= 0 or rib_index >= len(rib_outlines):
+        raise ValueError(f"rib_index must be within 1..{len(rib_outlines) - 1}")
+
+    outline_a = np.asarray(rib_outlines[rib_index - 1], dtype=float)
+    outline_b = np.asarray(rib_outlines[rib_index], dtype=float)
+    _validate_planar_pair(outline_a, outline_b)
+
+    connectors = outline_b - outline_a
+    distances = np.linalg.norm(connectors, axis=1)
+    idx = int(np.argmax(distances))
+    width_vec = connectors[idx]
+    width_norm = np.linalg.norm(width_vec)
+    if width_norm < EPS:
+        raise ValueError("Unable to derive blank width from identical rib outlines")
+    across_dir = width_vec / width_norm
+
+    midline = 0.5 * (outline_a + outline_b)
+    if len(midline) >= 2:
+        long_vec = midline[-1] - midline[0]
+    else:
+        long_vec = np.array([1.0, 0.0, 0.0], dtype=float)
+    long_vec = _ensure_non_parallel(long_vec, across_dir)
+    long_dir = long_vec / (np.linalg.norm(long_vec) + EPS)
+
+    width_dir = across_dir - np.dot(across_dir, long_dir) * long_dir
+    if np.linalg.norm(width_dir) < EPS:
+        width_dir = np.cross(long_dir, np.array([0.0, 0.0, 1.0], dtype=float))
+    if np.linalg.norm(width_dir) < EPS:
+        width_dir = np.cross(long_dir, np.array([0.0, 1.0, 0.0], dtype=float))
+    width_dir = width_dir / (np.linalg.norm(width_dir) + EPS)
+
+    all_points = np.vstack([outline_a, outline_b])
+    width_coords = all_points @ width_dir
+    return float(width_coords.max() - width_coords.min())
+
+
 __all__ = [
     "build_rib_surfaces",
     "find_rib_side_planes",
     "all_rib_surfaces_convex",
     "measure_rib_plane_deviation",
     "project_points_to_plane",
+    "compute_rib_blank_width",
     "RibSidePlane",
     "RibPlaneDeviation",
 ]
