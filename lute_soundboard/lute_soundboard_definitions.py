@@ -450,3 +450,20 @@ class BaltaSaz(LuteSoundboard):
     def _make_spine_points(self) -> None:
         self.bridge = self.geo.translate_x(self.form_center, self.unit)
         self.form_bottom = self.geo.reflect(self.form_center, self.bridge)
+
+
+class CuraSaz(LuteSoundboard):
+    top_arc = TopArcType2()
+    neck_profile = NeckThroughTop2()
+    soundhole_placement = SoundholeNonePlacement()
+    soundhole_sizing = SoundholeNone()
+    lower_arc_builder = SimpleBlendScaled(1.5)
+    unit_mm = 150 / 4
+
+    def _make_spine_points(self) -> None:
+        self.form_bottom = self.geo.reflect(
+            self.geo.divide_distance(self.form_top, self.form_center, 3)[-1],
+            self.form_center,
+        )
+        self.vertical_unit = self.point_neck_joint.distance(self.form_bottom) / 5
+        self.bridge = self.geo.translate_x(self.form_bottom, -self.vertical_unit)

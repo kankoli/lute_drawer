@@ -38,6 +38,11 @@ class TopArcType4(TopArc):
         return 7 * lute.unit
 
 
+class TopArcType5(TopArc):
+    def radius(self, lute) -> float:
+        return 8 * lute.unit
+
+
 class TopArcType10(TopArc):
     def radius(self, lute) -> float:
         return 13 * lute.unit
@@ -49,5 +54,6 @@ __all__ = [
     "TopArcType2",
     "TopArcType3",
     "TopArcType4",
+    "TopArcType5",
     "TopArcType10",
 ]
