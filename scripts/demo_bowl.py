@@ -38,7 +38,7 @@ from plotting.ribs import (
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
 DEFAULT_SECTION_CURVE = "lute_bowl.section_curve.CircularSectionCurve"
-DEFAULT_SKIRT_SPAN = 0.0
+DEFAULT_SKIRT_SPAN = 1.0
 
 PRESETS = {
     "mid-cosine-arch": {
@@ -73,6 +73,22 @@ def _resolve_class(path: str):
         return getattr(module, attr)
     except AttributeError as exc:
         raise ValueError(f"Module '{module_name}' has no attribute '{attr}'") from exc
+
+
+def _resolve_class_or_default(
+    arg_value,
+    preset_value,
+    default_path: str,
+    expected_base: type,
+    flag_name: str,
+):
+    raw = arg_value if arg_value is not None else preset_value
+    if raw is None:
+        raw = default_path
+    cls = raw if isinstance(raw, type) else _resolve_class(raw)
+    if not isinstance(cls, type) or not issubclass(cls, expected_base):
+        raise TypeError(f"{flag_name} must reference a {expected_base.__name__} subclass")
+    return cls
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -244,13 +260,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     lute_cls = lute_path if isinstance(lute_path, type) else _resolve_class(lute_path)
     lute = lute_cls()
 
-    top_curve_cls = _resolve_class(args.top_curve) if args.top_curve else None
-    if top_curve_cls is not None and (not isinstance(top_curve_cls, type) or not issubclass(top_curve_cls, TopCurve)):
-        raise TypeError("--top-curve must reference a TopCurve subclass")
-
-    section_curve_cls = _resolve_class(args.section_curve) if args.section_curve else None
-    if section_curve_cls is not None and (not isinstance(section_curve_cls, type) or not issubclass(section_curve_cls, section_curve_mod.BaseSectionCurve)):
-        raise TypeError("--section-curve must reference a BaseSectionCurve subclass")
+    top_curve_cls = _resolve_class_or_default(
+        args.top_curve,
+        preset_cfg.get("top_curve"),
+        DEFAULT_CURVE,
+        TopCurve,
+        "--top-curve",
+    )
+    section_curve_cls = _resolve_class_or_default(
+        args.section_curve,
+        preset_cfg.get("section_curve_cls"),
+        DEFAULT_SECTION_CURVE,
+        section_curve_mod.BaseSectionCurve,
+        "--section-curve",
+    )
 
     build_kwargs = {
         "preset": preset_cfg or None,
@@ -261,12 +284,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         build_kwargs["n_ribs"] = args.ribs
     if args.sections is not None:
         build_kwargs["n_sections"] = args.sections
-    if top_curve_cls is not None:
-        build_kwargs["top_curve"] = top_curve_cls
-    if section_curve_cls is not None:
-        build_kwargs["section_curve_cls"] = section_curve_cls
-    if args.skirt_span is not None:
-        build_kwargs["skirt_span"] = args.skirt_span
+    build_kwargs["top_curve"] = top_curve_cls
+    build_kwargs["section_curve_cls"] = section_curve_cls
+    skirt_span = args.skirt_span
+    if skirt_span is None:
+        skirt_span = preset_cfg.get("skirt_span")
+        if skirt_span is None:
+            skirt_span = DEFAULT_SKIRT_SPAN
+    build_kwargs["skirt_span"] = skirt_span
     # Optional section-curve kwargs for presets; explicit kwargs could be added via code edits if needed.
     if preset_cfg.get("section_curve_kwargs"):
         build_kwargs["section_curve_kwargs"] = preset_cfg["section_curve_kwargs"]
