@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from lute_bowl.bowl_from_soundboard import compute_equivalent_flat_side_depth
 from lute_bowl.rib_builder import build_bowl_ribs
 from lute_bowl.rib_form_builder import (
     all_rib_surfaces_convex,
@@ -173,6 +174,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional named preset; explicit flags override preset values.",
     )
     parser.add_argument(
+        "--print-flat-side-depth",
+        action="store_true",
+        help="Print equivalent flat-side depth (flat back) for matching bowl volume.",
+    )
+    parser.add_argument(
         "--plot-rib-planes",
         action="store_true",
         help="Plot rib surfaces with their side planes (former demo_rib_planes.py).",
@@ -266,6 +272,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         build_kwargs["section_curve_kwargs"] = preset_cfg["section_curve_kwargs"]
 
     sections, ribs = build_bowl_ribs(lute, **build_kwargs)
+
+    if args.print_flat_side_depth:
+        try:
+            depth_units = compute_equivalent_flat_side_depth(lute, sections)
+        except Exception as exc:
+            print(f"Flat-side depth calculation failed: {exc}")
+        else:
+            unit_scale = lute.unit_in_mm() / lute.unit if hasattr(lute, "unit") else 1.0
+            depth_mm = depth_units * unit_scale
+            print(f"Equivalent flat-side depth: {depth_units:.4f} units ({depth_mm:.1f} mm)")
 
     if args.plot_rib_planes:
         _run_rib_planes_mode(lute, ribs, args)

@@ -77,6 +77,155 @@ class Section:
 
 
 # ---------------------------------------------------------------------------
+# Volume helpers
+# ---------------------------------------------------------------------------
+
+
+def _section_area(section: Section, samples: int) -> float:
+    if samples < 2:
+        raise ValueError("samples must be at least 2.")
+    if section.curve.is_degenerate:
+        return 0.0
+
+    pts = np.asarray(section.curve.sample_points(samples), dtype=float)
+    if pts.shape[0] < 2:
+        return 0.0
+
+    pts = pts.copy()
+    pts[:, 1] = np.maximum(pts[:, 1], 0.0)
+    pts[0, 1] = 0.0
+    pts[-1, 1] = 0.0
+
+    y = pts[:, 0]
+    z = pts[:, 1]
+    y_closed = np.concatenate([y, y[:1]])
+    z_closed = np.concatenate([z, z[:1]])
+    area = 0.5 * abs(float(np.dot(y_closed[:-1], z_closed[1:]) - np.dot(z_closed[:-1], y_closed[1:])))
+    return area
+
+
+def _soundboard_outline_points(lute, samples_per_arc: int) -> np.ndarray:
+    if samples_per_arc < 2:
+        raise ValueError("samples_per_arc must be at least 2.")
+
+    arcs = list(getattr(lute, "final_arcs", []))
+    reflected_arcs = list(getattr(lute, "final_reflected_arcs", []))
+    if not arcs or not reflected_arcs:
+        raise ValueError("Soundboard outline arcs are missing.")
+
+    outline_arcs = arcs + list(reversed(reflected_arcs))
+    points: list[np.ndarray] = []
+    last_point: np.ndarray | None = None
+    for arc in outline_arcs:
+        sampled = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
+        if sampled.size == 0:
+            continue
+        if last_point is not None and np.linalg.norm(sampled[0] - last_point) < 1e-7:
+            sampled = sampled[1:]
+        if sampled.size == 0:
+            continue
+        points.append(sampled)
+        last_point = sampled[-1]
+
+    if not points:
+        raise ValueError("Unable to sample a soundboard outline.")
+
+    return np.vstack(points)
+
+
+def compute_soundboard_outline_area(lute, *, samples_per_arc: int = 400) -> float:
+    """Estimate the planar soundboard outline area in XY units."""
+    pts = _soundboard_outline_points(lute, samples_per_arc)
+    if pts.shape[0] < 3:
+        raise ValueError("Need at least three outline points to compute area.")
+
+    x = pts[:, 0]
+    y = pts[:, 1]
+    x_closed = np.concatenate([x, x[:1]])
+    y_closed = np.concatenate([y, y[:1]])
+    area = 0.5 * abs(float(np.dot(x_closed[:-1], y_closed[1:]) - np.dot(y_closed[:-1], x_closed[1:])))
+    return area
+
+
+def compute_bowl_inner_volume(
+    sections: Sequence[Section],
+    *,
+    samples_per_section: int = 400,
+    rel_tol: float | None = None,
+    abs_tol: float | None = None,
+    max_samples: int = 6400,
+) -> float:
+    """Estimate the bowl inner volume by integrating section areas along X.
+
+    Areas are derived from sampled YZ curves against the z=0 soundboard plane.
+    Provide rel_tol/abs_tol to refine sampling until the volume stabilizes.
+    """
+    sections_list = list(sections)
+    if len(sections_list) < 2:
+        raise ValueError("At least two sections are required to estimate volume.")
+    if samples_per_section < 2:
+        raise ValueError("samples_per_section must be at least 2.")
+
+    xs = np.array([float(section.x) for section in sections_list], dtype=float)
+    order = np.argsort(xs)
+    xs = xs[order]
+    sections_sorted = [sections_list[int(idx)] for idx in order]
+
+    if abs(float(xs[-1] - xs[0])) <= _EPS:
+        raise ValueError("Section span collapsed; cannot integrate volume.")
+
+    def _volume_for_samples(sample_count: int) -> float:
+        areas = np.array([_section_area(section, sample_count) for section in sections_sorted], dtype=float)
+        return float(np.trapz(areas, xs))
+
+    volume = _volume_for_samples(int(samples_per_section))
+    if rel_tol is None and abs_tol is None:
+        return volume
+
+    abs_tol_val = max(0.0, float(abs_tol or 0.0))
+    rel_tol_val = max(0.0, float(rel_tol or 0.0))
+    max_samples = max(int(max_samples), int(samples_per_section))
+
+    previous = volume
+    samples = int(samples_per_section) * 2
+    while samples <= max_samples:
+        current = _volume_for_samples(samples)
+        delta = abs(current - previous)
+        scale = max(abs(current), abs(previous), 1.0)
+        tolerance = max(abs_tol_val, rel_tol_val * scale)
+        if delta <= tolerance:
+            return current
+        previous = current
+        samples *= 2
+
+    return previous
+
+
+def compute_equivalent_flat_side_depth(
+    lute,
+    sections: Sequence[Section],
+    *,
+    samples_per_section: int = 400,
+    samples_per_arc: int = 400,
+    rel_tol: float | None = None,
+    abs_tol: float | None = None,
+    max_samples: int = 6400,
+) -> float:
+    """Return constant flat-side depth (flat back) matching the bowl volume."""
+    volume = compute_bowl_inner_volume(
+        sections,
+        samples_per_section=samples_per_section,
+        rel_tol=rel_tol,
+        abs_tol=abs_tol,
+        max_samples=max_samples,
+    )
+    area = compute_soundboard_outline_area(lute, samples_per_arc=samples_per_arc)
+    if area <= _EPS:
+        raise ValueError("Soundboard outline area is zero; cannot compute flat-side depth.")
+    return float(volume / area)
+
+
+# ---------------------------------------------------------------------------
 # Soundboard sampling
 # ---------------------------------------------------------------------------
 
