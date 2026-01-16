@@ -39,6 +39,7 @@ DEFAULT_LUTE = "lute_soundboard.ManolLavta"
 DEFAULT_CURVE = "lute_bowl.top_curves.FlatBackCurve"
 DEFAULT_SECTION_CURVE = "lute_bowl.section_curve.CircularSectionCurve"
 DEFAULT_SKIRT_SPAN = 1.0
+DEFAULT_RIBS = 13
 
 PRESETS = {
     "mid-cosine-arch": {
@@ -104,12 +105,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help=f"Fully qualified section-curve class (default if none/preset: {DEFAULT_SECTION_CURVE})",
     )
-    parser.add_argument("--ribs", type=int, default=None, help="Number of rib intervals.")
+    parser.add_argument(
+        "--ribs",
+        type=int,
+        default=None,
+        help=f"Number of rib intervals (default if none/preset: {DEFAULT_RIBS}).",
+    )
     parser.add_argument(
         "--sections",
         type=int,
         default=None,
-        help="Number of planar section samples (omit to use build_bowl_ribs default).",
+        help="Number of planar section samples (default if none/preset: 300).",
     )
     parser.add_argument(
         "--skirt-span",
