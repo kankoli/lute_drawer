@@ -123,9 +123,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=f"Fully qualified top-curve class (default if none/preset: {DEFAULT_CURVE})",
     )
     parser.add_argument(
+        "--show-top-curve",
+        action="store_true",
+        help="Highlight the sampled top-curve spine.",
+    )
+    parser.add_argument(
         "--section-curve",
         default=None,
         help=f"Fully qualified section-curve class (default if none/preset: {DEFAULT_SECTION_CURVE})",
+    )
+    parser.add_argument(
+        "--skirt-span",
+        type=float,
+        default=None,
+        help=f"Distance from tail along spine where skirt ribs begin (units, default if none/preset: {DEFAULT_SKIRT_SPAN}).",
     )
     parser.add_argument(
         "--ribs",
@@ -140,20 +151,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Number of planar section samples (default if none/preset: 300).",
     )
     parser.add_argument(
-        "--skirt-span",
-        type=float,
-        default=None,
-        help=f"Distance from tail along spine where skirt ribs begin (units, default if none/preset: {DEFAULT_SKIRT_SPAN}).",
-    )
-    parser.add_argument(
         "--show-section-circles",
         action="store_true",
         help="Draw section circle overlays when section count allows.",
-    )
-    parser.add_argument(
-        "--show-top-curve",
-        action="store_true",
-        help="Highlight the sampled top-curve spine.",
     )
     parser.add_argument(
         "--build-molds",
@@ -164,7 +164,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--stations",
         type=int,
         default=6,
-        help="Number of mold stations (requires --build-molds).",
+        help="Number of mold stations (requires --build-molds, default: 6).",
     )
     parser.add_argument(
         "--thickness",
