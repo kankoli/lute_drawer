@@ -92,8 +92,30 @@ def _resolve_class_or_default(
     return cls
 
 
+def _print_presets() -> None:
+    print("Available presets:")
+    for name in sorted(PRESETS.keys()):
+        print(f"  {name}:")
+        for key, value in PRESETS[name].items():
+            print(f"    {key}={value}")
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS.keys()),
+        help=(
+            "Optional named preset "
+            f"(available: {', '.join(sorted(PRESETS.keys()))}); "
+            "explicit flags override preset values. Use --list-presets for details."
+        ),
+    )
+    parser.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="Print preset definitions with key=value pairs and exit.",
+    )
     parser.add_argument("--lute", default=None, help=f"Fully qualified lute class (default if none/preset: {DEFAULT_LUTE})")
     parser.add_argument(
         "--top-curve",
@@ -191,11 +213,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Additional tail support extension in millimetres for STEP output.",
     )
     parser.add_argument(
-        "--preset",
-        choices=sorted(PRESETS.keys()),
-        help="Optional named preset; explicit flags override preset values.",
-    )
-    parser.add_argument(
         "--print-flat-side-depth",
         action="store_true",
         help="Print equivalent flat-side depth (flat back) for matching bowl volume.",
@@ -250,6 +267,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.list_presets:
+        _print_presets()
+        return 0
 
     preset_cfg = {}
     if args.preset:
