@@ -83,20 +83,33 @@ def _helper_objects(lute: LuteSoundboard) -> Sequence[object]:
     return helpers
 
 
+def _format_measurements(lute: LuteSoundboard) -> str:
+    rows: List[str] = []
+    for measurement in lute.measurements():
+        value = float(measurement.value)
+        value_mm = float(measurement.value_in_mm)
+        rows.append(
+            f"  {measurement.label:<24} "
+            f"{value:>10.3f} units  "
+            f"({value_mm:>10.2f} mm)"
+        )
+    return "\n".join(rows)
+
+
 def _render_soundboard(
     name: str,
     cls: Type[LuteSoundboard],
     *,
     display_size: int,
     include_helpers: bool,
-) -> Path:
+) -> tuple[LuteSoundboard, Path]:
     lute = cls(display_size=display_size)
     renderer = SvgRenderer(f"{name}_soundboard.svg", size=(lute.geo.display_size * 9, lute.geo.display_size * 6))
     objects = _core_objects(lute)
     if include_helpers:
         objects.extend(_helper_objects(lute))
     renderer.draw(objects)
-    return Path(renderer.output_dir) / f"{name}_soundboard.svg"
+    return lute, Path(renderer.output_dir) / f"{name}_soundboard.svg"
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -122,6 +135,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Abort on the first soundboard that raises an exception.",
     )
+    parser.add_argument(
+        "--print-measurements",
+        action="store_true",
+        help="Print each soundboard's measurements after rendering.",
+    )
     return parser.parse_args(argv)
 
 
@@ -137,7 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for name, cls in classes:
         try:
-            output_path = _render_soundboard(
+            lute, output_path = _render_soundboard(
                 name,
                 cls,
                 display_size=args.display_size,
@@ -150,6 +168,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 break
         else:
             print(f"Rendered {name} -> {output_path}")
+            if args.print_measurements:
+                print(_format_measurements(lute))
 
     if failures:
         print("\nErrors:")
