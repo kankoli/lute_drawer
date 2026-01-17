@@ -267,6 +267,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.plane_png and not args.plot_rib_planes:
+        args.plot_rib_planes = True
     if args.list_presets:
         _print_presets()
         return 0
