@@ -7,6 +7,7 @@ from typing import Iterable
 import numpy as np
 
 from .bowl_from_soundboard import _spine_point_at_X
+from utils.geo_dsl import sample_arcs
 
 _EPS = 1e-9
 
@@ -155,37 +156,10 @@ def sample_outline_arcs(
     if samples_per_arc < 2:
         raise ValueError("samples_per_arc must be at least 2.")
 
-    points: list[np.ndarray] = []
-    last_point: np.ndarray | None = None
     if start_point is None:
         start_point = getattr(lute, "form_top", None)
-    if start_point is not None:
-        try:
-            last_point = np.array([float(start_point.x), float(start_point.y)], dtype=float)
-        except AttributeError:
-            last_point = np.asarray(start_point, dtype=float)
-        last_point = normalize_outline_points(lute, last_point[None, :])[0]
-    for arc in arcs:
-        sampled = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
-        if sampled.size == 0:
-            continue
-        sampled = normalize_outline_points(lute, sampled)
-        if last_point is not None:
-            dist_start = float(np.linalg.norm(sampled[0] - last_point))
-            dist_end = float(np.linalg.norm(sampled[-1] - last_point))
-            if dist_end < dist_start:
-                sampled = sampled[::-1]
-        if last_point is not None and np.linalg.norm(sampled[0] - last_point) < 1e-7:
-            sampled = sampled[1:]
-        if sampled.size == 0:
-            continue
-        points.append(sampled)
-        last_point = sampled[-1]
-
-    if not points:
-        raise ValueError("Unable to sample a soundboard outline.")
-
-    return np.vstack(points)
+    points = sample_arcs(arcs, samples_per_arc=samples_per_arc, start_point=start_point)
+    return normalize_outline_points(lute, points)
 
 
 def edge_curve(surface: RibbonSurface, plane: Plane, *, sample_count: int = 200) -> np.ndarray:

@@ -4,6 +4,43 @@ import svgutils
 from sympy import pi, Point, Circle, Line, Segment, intersection as sympy_intersection
 import numpy as np
 
+
+def sample_arcs(arcs, samples_per_arc=100, *, start_point=None) -> np.ndarray:
+    """Return sampled points along arcs, orienting each arc to connect end-to-end."""
+    arcs_list = list(arcs)
+    if not arcs_list:
+        raise ValueError("No arcs provided.")
+    if samples_per_arc < 2:
+        raise ValueError("samples_per_arc must be at least 2.")
+
+    points = []
+    last_point = None
+    if start_point is not None:
+        try:
+            last_point = np.array([float(start_point.x), float(start_point.y)], dtype=float)
+        except AttributeError:
+            last_point = np.asarray(start_point, dtype=float)
+
+    for arc in arcs_list:
+        sampled = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
+        if sampled.size == 0:
+            continue
+        if last_point is not None:
+            dist_start = float(np.linalg.norm(sampled[0] - last_point))
+            dist_end = float(np.linalg.norm(sampled[-1] - last_point))
+            if dist_end < dist_start:
+                sampled = sampled[::-1]
+        if last_point is not None and np.linalg.norm(sampled[0] - last_point) < 1e-7:
+            sampled = sampled[1:]
+        if sampled.size == 0:
+            continue
+        points.append(sampled)
+        last_point = sampled[-1]
+
+    if not points:
+        raise ValueError("Unable to sample any arc points.")
+    return np.vstack(points)
+
 class GeoArc:
     def __init__(self, center, p1, p2):
         self.center = center

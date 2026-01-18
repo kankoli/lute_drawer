@@ -13,9 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from typing import Callable, List, Sequence
+import warnings
 
 import numpy as np
-import warnings
+
+from utils.geo_dsl import sample_arcs
 
 from .top_curves import (
     DeepBackCurve,
@@ -114,23 +116,7 @@ def _soundboard_outline_points(lute, samples_per_arc: int) -> np.ndarray:
         raise ValueError("Soundboard outline arcs are missing.")
 
     outline_arcs = arcs + list(reversed(reflected_arcs))
-    points: list[np.ndarray] = []
-    last_point: np.ndarray | None = None
-    for arc in outline_arcs:
-        sampled = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
-        if sampled.size == 0:
-            continue
-        if last_point is not None and np.linalg.norm(sampled[0] - last_point) < 1e-7:
-            sampled = sampled[1:]
-        if sampled.size == 0:
-            continue
-        points.append(sampled)
-        last_point = sampled[-1]
-
-    if not points:
-        raise ValueError("Unable to sample a soundboard outline.")
-
-    return np.vstack(points)
+    return sample_arcs(outline_arcs, samples_per_arc=samples_per_arc)
 
 
 def compute_soundboard_outline_area(lute, *, samples_per_arc: int = 400) -> float:
