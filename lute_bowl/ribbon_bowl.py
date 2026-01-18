@@ -128,7 +128,7 @@ def edge_planes_for_terminal_line(
     ref_offset: float | None = None,
     sample_count: int = 200,
     max_angle_deg: float = 89.0,
-    iterations: int = 30,
+    angle_samples: int = 361,
 ) -> tuple[Plane, Plane]:
     line_dir = np.asarray(bottom_point, dtype=float) - np.asarray(top_point, dtype=float)
     line_norm = np.linalg.norm(line_dir)
@@ -136,36 +136,57 @@ def edge_planes_for_terminal_line(
         raise ValueError("Terminal points collapse; cannot define terminal line.")
     line_dir = line_dir / line_norm
 
-    ref_offset = float(width) * 0.5 if ref_offset is None else float(ref_offset)
+    ref_offset = 0.0 if ref_offset is None else float(ref_offset)
     ref_point = surface.point_at(ref_s, ref_offset)
-    base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
-
-    def width_for_angle(angle: float) -> float:
-        normal_a = _rotate_around_axis(base_normal, line_dir, angle)
-        normal_b = _rotate_around_axis(base_normal, line_dir, -angle)
-        return _max_separation(surface, normal_a, normal_b, top_point, sample_count)
-
-    high = np.deg2rad(max_angle_deg)
-    width_high = width_for_angle(high)
-    if not np.isfinite(width_high) or width_high < width - 1e-6:
-        raise ValueError("Cannot reach requested width with the available ribbon surface.")
-
-    low = 0.0
-    for _ in range(max(1, iterations)):
-        mid = 0.5 * (low + high)
-        width_mid = width_for_angle(mid)
-        if not np.isfinite(width_mid):
-            high = mid
-            continue
-        if width_mid < width:
-            low = mid
+    try:
+        base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
+    except ValueError:
+        if abs(ref_offset) <= _EPS:
+            ref_point = surface.point_at(ref_s, float(width) * 0.5)
+            base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
         else:
-            high = mid
+            raise
 
-    final_angle = high
-    normal_a = _rotate_around_axis(base_normal, line_dir, final_angle)
-    normal_b = _rotate_around_axis(base_normal, line_dir, -final_angle)
-    return Plane(point=np.asarray(top_point, float), normal=normal_a), Plane(point=np.asarray(top_point, float), normal=normal_b)
+    base_normal = base_normal / (np.linalg.norm(base_normal) + _EPS)
+    basis_perp = np.cross(line_dir, base_normal)
+    basis_norm = np.linalg.norm(basis_perp)
+    if basis_norm <= _EPS:
+        raise ValueError("Unable to derive a stable rotation basis for the edge planes.")
+    basis_perp = basis_perp / basis_norm
+
+    max_angle = np.deg2rad(max_angle_deg)
+    angles = np.linspace(-max_angle, max_angle, max(3, int(angle_samples)))
+    s_samples = np.linspace(0.0, 1.0, max(2, int(sample_count)))
+    base = surface.centerline_points(s_samples)
+    half_width = float(width) * 0.5
+    tol = 1e-7
+
+    best_pos: tuple[float, np.ndarray] | None = None
+    best_neg: tuple[float, np.ndarray] | None = None
+
+    for angle in angles:
+        normal = (np.cos(angle) * base_normal) + (np.sin(angle) * basis_perp)
+        denom = float(np.dot(normal, surface.width_axis))
+        if abs(denom) <= _EPS:
+            continue
+        t_vals = -((base - top_point) @ normal) / denom
+        t_min = float(t_vals.min())
+        t_max = float(t_vals.max())
+
+        if t_min >= -tol and t_max <= half_width + tol:
+            if best_pos is None or t_max > best_pos[0]:
+                best_pos = (t_max, normal)
+        if t_max <= tol and t_min >= -half_width - tol:
+            if best_neg is None or t_min < best_neg[0]:
+                best_neg = (t_min, normal)
+
+    if best_pos is None or best_neg is None:
+        raise ValueError("Cannot derive edge planes within the ribbon blank.")
+
+    return (
+        Plane(point=np.asarray(top_point, float), normal=best_pos[1]),
+        Plane(point=np.asarray(top_point, float), normal=best_neg[1]),
+    )
 
 
 def edge_curve(surface: RibbonSurface, plane: Plane, *, sample_count: int = 200) -> np.ndarray:
