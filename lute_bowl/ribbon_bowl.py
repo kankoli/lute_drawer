@@ -54,6 +54,94 @@ class RibbonSurface:
         """Map points from the oriented ribbon frame back to the source frame."""
         return _undo_terminal_line_transform(points, self.rotation, self.yz_offset, self.z_sign)
 
+    @classmethod
+    def from_outline(cls, lute, *, samples_per_arc: int = 200) -> "RibbonSurface":
+        outline_pts = sample_outline_arcs(lute, samples_per_arc=samples_per_arc)
+        centerline = np.column_stack(
+            [outline_pts[:, 0], np.zeros(outline_pts.shape[0], dtype=float), outline_pts[:, 1]]
+        )
+        centerline, rotation, yz_offset, z_sign = _orient_centerline(centerline)
+        s_values = _cumulative_s(centerline)
+        width_axis = _plane_normal(centerline)
+        return cls(
+            centerline=centerline,
+            s_values=s_values,
+            width_axis=width_axis,
+            rotation=rotation,
+            yz_offset=yz_offset,
+            z_sign=z_sign,
+        )
+
+    def edge_planes_for_terminal_line(
+        self,
+        top_point: np.ndarray,
+        bottom_point: np.ndarray,
+        width: float,
+        *,
+        ref_s: float = 0.5,
+        ref_offset: float | None = None,
+        sample_count: int = 200,
+        max_angle_deg: float = 89.0,
+        angle_samples: int = 361,
+    ) -> tuple[Plane, Plane]:
+        line_dir = np.asarray(bottom_point, dtype=float) - np.asarray(top_point, dtype=float)
+        line_norm = np.linalg.norm(line_dir)
+        if line_norm <= _EPS:
+            raise ValueError("Terminal points collapse; cannot define terminal line.")
+        line_dir = line_dir / line_norm
+
+        ref_offset = 0.0 if ref_offset is None else float(ref_offset)
+        ref_point = self.point_at(ref_s, ref_offset)
+        try:
+            base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
+        except ValueError:
+            if abs(ref_offset) <= _EPS:
+                ref_point = self.point_at(ref_s, float(width) * 0.5)
+                base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
+            else:
+                raise
+
+        base_normal = base_normal / (np.linalg.norm(base_normal) + _EPS)
+        basis_perp = np.cross(line_dir, base_normal)
+        basis_norm = np.linalg.norm(basis_perp)
+        if basis_norm <= _EPS:
+            raise ValueError("Unable to derive a stable rotation basis for the edge planes.")
+        basis_perp = basis_perp / basis_norm
+
+        max_angle = np.deg2rad(max_angle_deg)
+        angles = np.linspace(-max_angle, max_angle, max(3, int(angle_samples)))
+        s_samples = np.linspace(0.0, 1.0, max(2, int(sample_count)))
+        base = self.centerline_points(s_samples)
+        half_width = float(width) * 0.5
+        tol = 1e-7
+
+        best_pos: tuple[float, np.ndarray] | None = None
+        best_neg: tuple[float, np.ndarray] | None = None
+
+        for angle in angles:
+            normal = (np.cos(angle) * base_normal) + (np.sin(angle) * basis_perp)
+            denom = float(np.dot(normal, self.width_axis))
+            if abs(denom) <= _EPS:
+                continue
+            t_vals = -((base - top_point) @ normal) / denom
+            t_min = float(t_vals.min())
+            t_max = float(t_vals.max())
+
+            if t_min >= -tol and t_max <= half_width + tol:
+                if best_pos is None or t_max > best_pos[0]:
+                    best_pos = (t_max, normal)
+            if t_max <= tol and t_min >= -half_width - tol:
+                if best_neg is None or t_min < best_neg[0]:
+                    best_neg = (t_min, normal)
+
+        if best_pos is None or best_neg is None:
+            raise ValueError("Cannot derive edge planes within the ribbon blank.")
+
+        return (
+            Plane(point=np.asarray(top_point, float), normal=best_pos[1]),
+            Plane(point=np.asarray(top_point, float), normal=best_neg[1]),
+        )
+
 
 def sample_outline_arcs(
     lute,
@@ -98,95 +186,6 @@ def sample_outline_arcs(
         raise ValueError("Unable to sample a soundboard outline.")
 
     return np.vstack(points)
-
-
-def build_ribbon_surface_from_outline(lute, *, samples_per_arc: int = 200) -> RibbonSurface:
-    outline_pts = sample_outline_arcs(lute, samples_per_arc=samples_per_arc)
-    centerline = np.column_stack(
-        [outline_pts[:, 0], np.zeros(outline_pts.shape[0], dtype=float), outline_pts[:, 1]]
-    )
-    centerline, rotation, yz_offset, z_sign = _orient_centerline(centerline)
-    s_values = _cumulative_s(centerline)
-    width_axis = _plane_normal(centerline)
-    return RibbonSurface(
-        centerline=centerline,
-        s_values=s_values,
-        width_axis=width_axis,
-        rotation=rotation,
-        yz_offset=yz_offset,
-        z_sign=z_sign,
-    )
-
-
-def edge_planes_for_terminal_line(
-    surface: RibbonSurface,
-    top_point: np.ndarray,
-    bottom_point: np.ndarray,
-    width: float,
-    *,
-    ref_s: float = 0.5,
-    ref_offset: float | None = None,
-    sample_count: int = 200,
-    max_angle_deg: float = 89.0,
-    angle_samples: int = 361,
-) -> tuple[Plane, Plane]:
-    line_dir = np.asarray(bottom_point, dtype=float) - np.asarray(top_point, dtype=float)
-    line_norm = np.linalg.norm(line_dir)
-    if line_norm <= _EPS:
-        raise ValueError("Terminal points collapse; cannot define terminal line.")
-    line_dir = line_dir / line_norm
-
-    ref_offset = 0.0 if ref_offset is None else float(ref_offset)
-    ref_point = surface.point_at(ref_s, ref_offset)
-    try:
-        base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
-    except ValueError:
-        if abs(ref_offset) <= _EPS:
-            ref_point = surface.point_at(ref_s, float(width) * 0.5)
-            base_normal = _plane_normal_from_line_and_point(top_point, line_dir, ref_point)
-        else:
-            raise
-
-    base_normal = base_normal / (np.linalg.norm(base_normal) + _EPS)
-    basis_perp = np.cross(line_dir, base_normal)
-    basis_norm = np.linalg.norm(basis_perp)
-    if basis_norm <= _EPS:
-        raise ValueError("Unable to derive a stable rotation basis for the edge planes.")
-    basis_perp = basis_perp / basis_norm
-
-    max_angle = np.deg2rad(max_angle_deg)
-    angles = np.linspace(-max_angle, max_angle, max(3, int(angle_samples)))
-    s_samples = np.linspace(0.0, 1.0, max(2, int(sample_count)))
-    base = surface.centerline_points(s_samples)
-    half_width = float(width) * 0.5
-    tol = 1e-7
-
-    best_pos: tuple[float, np.ndarray] | None = None
-    best_neg: tuple[float, np.ndarray] | None = None
-
-    for angle in angles:
-        normal = (np.cos(angle) * base_normal) + (np.sin(angle) * basis_perp)
-        denom = float(np.dot(normal, surface.width_axis))
-        if abs(denom) <= _EPS:
-            continue
-        t_vals = -((base - top_point) @ normal) / denom
-        t_min = float(t_vals.min())
-        t_max = float(t_vals.max())
-
-        if t_min >= -tol and t_max <= half_width + tol:
-            if best_pos is None or t_max > best_pos[0]:
-                best_pos = (t_max, normal)
-        if t_max <= tol and t_min >= -half_width - tol:
-            if best_neg is None or t_min < best_neg[0]:
-                best_neg = (t_min, normal)
-
-    if best_pos is None or best_neg is None:
-        raise ValueError("Cannot derive edge planes within the ribbon blank.")
-
-    return (
-        Plane(point=np.asarray(top_point, float), normal=best_pos[1]),
-        Plane(point=np.asarray(top_point, float), normal=best_neg[1]),
-    )
 
 
 def edge_curve(surface: RibbonSurface, plane: Plane, *, sample_count: int = 200) -> np.ndarray:
@@ -392,8 +391,6 @@ __all__ = [
     "Plane",
     "RibbonSurface",
     "sample_outline_arcs",
-    "build_ribbon_surface_from_outline",
-    "edge_planes_for_terminal_line",
     "edge_curve",
     "ribbon_surface_grid",
     "default_terminal_points",

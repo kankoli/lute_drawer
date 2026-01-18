@@ -15,10 +15,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.ribbon_bowl import (
-    build_ribbon_surface_from_outline,
+    RibbonSurface,
     default_terminal_points,
     edge_curve,
-    edge_planes_for_terminal_line,
     normalize_outline_points,
     ribbon_surface_grid,
 )
@@ -101,7 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     width = float(args.width) if args.width is not None else float(lute.unit) / 4.0
 
-    surface = build_ribbon_surface_from_outline(lute, samples_per_arc=args.arc_samples)
+    surface = RibbonSurface.from_outline(lute, samples_per_arc=args.arc_samples)
     top_point, bottom_point = default_terminal_points(surface)
     if any(value is not None for value in (args.top_s, args.top_t, args.bottom_s, args.bottom_t)):
         top_s = 0.0 if args.top_s is None else args.top_s
@@ -127,7 +126,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ribs: list[np.ndarray] = []
     if args.show_edges:
-        plane_a, plane_b = edge_planes_for_terminal_line(surface, top_point, bottom_point, width)
+        plane_a, plane_b = surface.edge_planes_for_terminal_line(top_point, bottom_point, width)
         ribs = [
             edge_curve(surface, plane_a, sample_count=args.edge_samples),
             edge_curve(surface, plane_b, sample_count=args.edge_samples),
