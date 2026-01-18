@@ -118,10 +118,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     import matplotlib.pyplot as plt
+    from matplotlib.widgets import Button, Slider
 
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection="3d")
-    ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
+    fig = plt.figure(figsize=(11, 8))
+    grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.4], wspace=0.02)
+    ax = fig.add_subplot(grid[0, 0], projection="3d")
+    panel_ax = fig.add_subplot(grid[0, 1])
+    panel_ax.set_axis_off()
+    panel_ax.set_facecolor("0.96")
+    surface_plot = ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
     _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
 
     ribs: list[np.ndarray] = []
@@ -131,24 +136,132 @@ def main(argv: Sequence[str] | None = None) -> int:
             edge_curve(surface, plane_a, sample_count=args.edge_samples),
             edge_curve(surface, plane_b, sample_count=args.edge_samples),
         ]
+        edge_lines = []
         for idx, rib in enumerate(ribs):
             label = "edges" if idx == 0 else None
-            ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], color="tab:red", lw=1.4, label=label)
+            (line,) = ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], color="tab:red", lw=1.4, label=label)
+            edge_lines.append(line)
+    else:
+        edge_lines = []
 
-    xs = [X.ravel()]
-    ys = [Y.ravel()]
-    zs = [Z.ravel()]
-    if ribs:
-        xs.extend([rib[:, 0] for rib in ribs])
-        ys.extend([rib[:, 1] for rib in ribs])
-        zs.extend([rib[:, 2] for rib in ribs])
-    set_axes_equal_3d(ax, xs=np.concatenate(xs), ys=np.concatenate(ys), zs=np.concatenate(zs))
+    def _refresh_axes(x_grid, y_grid, z_grid, edge_curves: list[np.ndarray]) -> None:
+        xs = [x_grid.ravel()]
+        ys = [y_grid.ravel()]
+        zs = [z_grid.ravel()]
+        if edge_curves:
+            xs.extend([curve[:, 0] for curve in edge_curves])
+            ys.extend([curve[:, 1] for curve in edge_curves])
+            zs.extend([curve[:, 2] for curve in edge_curves])
+        set_axes_equal_3d(ax, xs=np.concatenate(xs), ys=np.concatenate(ys), zs=np.concatenate(zs))
+
+    _refresh_axes(X, Y, Z, ribs)
     ax.set_xlabel("X (along spine)")
     ax.set_ylabel("Y (across soundboard)")
     ax.set_zlabel("Z (depth)")
     ax.legend(loc="best")
     ax.set_title(type(lute).__name__)
-    plt.tight_layout()
+
+    panel_x = 0.08
+    panel_w = 0.84
+    value_y = 0.92
+    slider_y = 0.82
+    slider_h = 0.05
+    slider_w = 0.58
+    reset_w = 0.12
+    gap_w = panel_w - slider_w - reset_w
+    reset_y = slider_y
+    reset_h = slider_h * 0.85
+    slider_ax = panel_ax.inset_axes([panel_x, slider_y, slider_w, slider_h])
+    width_min = float(lute.unit) * 0.15
+    width_max = float(lute.unit) * 1.0
+    width_min = min(width_min, width)
+    width_max = max(width_max, width)
+    unit_scale = (
+        float(lute.unit_in_mm()) / float(lute.unit)
+        if hasattr(lute, "unit_in_mm") and hasattr(lute, "unit")
+        else 1.0
+    )
+    value_text = panel_ax.text(
+        panel_x,
+        value_y,
+        "",
+        transform=panel_ax.transAxes,
+        ha="left",
+        va="top",
+    )
+    width_slider = Slider(
+        slider_ax,
+        "",
+        valmin=width_min,
+        valmax=width_max,
+        valinit=width,
+        valfmt="%.1f",
+    )
+    default_width = width
+
+    reset_ax = panel_ax.inset_axes([panel_x + slider_w + gap_w, reset_y, reset_w, reset_h])
+    reset_button = Button(reset_ax, "↺")
+    width_slider.label.set_visible(False)
+    width_slider.valtext.set_visible(False)
+
+    def _format_width(val: float) -> str:
+        unit_val = float(val) / float(lute.unit)
+        mm_val = float(val) * unit_scale
+        return f"Rib Width | {unit_val:.2f} u / {mm_val:.2f} mm"
+
+    def _update_width(val: float) -> None:
+        nonlocal surface_plot, ribs
+        new_width = float(val)
+        x_grid, y_grid, z_grid = ribbon_surface_grid(
+            surface,
+            new_width,
+            s_samples=args.surface_samples,
+            t_samples=args.surface_width_samples,
+        )
+        surface_plot.remove()
+        surface_plot = ax.plot_surface(
+            x_grid,
+            y_grid,
+            z_grid,
+            color="tab:blue",
+            alpha=0.35,
+            linewidth=0,
+            antialiased=True,
+        )
+        new_ribs: list[np.ndarray] = []
+        if args.show_edges:
+            try:
+                plane_a, plane_b = surface.edge_planes_for_terminal_line(top_point, bottom_point, new_width)
+                new_ribs = [
+                    edge_curve(surface, plane_a, sample_count=args.edge_samples),
+                    edge_curve(surface, plane_b, sample_count=args.edge_samples),
+                ]
+            except ValueError:
+                new_ribs = []
+            if len(edge_lines) >= 2:
+                for idx in range(2):
+                    if idx < len(new_ribs):
+                        edge_lines[idx].set_data(new_ribs[idx][:, 0], new_ribs[idx][:, 1])
+                        edge_lines[idx].set_3d_properties(new_ribs[idx][:, 2])
+                        edge_lines[idx].set_visible(True)
+                    else:
+                        edge_lines[idx].set_visible(False)
+        ribs = new_ribs
+        _refresh_axes(x_grid, y_grid, z_grid, ribs)
+        value_text.set_text(_format_width(new_width))
+        fig.canvas.draw_idle()
+
+    width_slider.on_changed(_update_width)
+    value_text.set_text(_format_width(width))
+    reset_button.on_clicked(lambda _event: width_slider.set_val(default_width))
+    separator_y = slider_y - 0.03
+    panel_ax.plot(
+        [panel_x, panel_x + panel_w],
+        [separator_y, separator_y],
+        transform=panel_ax.transAxes,
+        color="0.8",
+        lw=1.0,
+    )
     plt.show()
     return 0
 
