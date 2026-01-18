@@ -19,7 +19,14 @@ class Plane:
 
 @dataclass(frozen=True)
 class RibbonSurface:
-    """Developable ribbon surface defined by a coplanar centerline."""
+    """Developable ribbon surface defined by a coplanar centerline.
+
+    Ribbon coordinates (s, t):
+    - s in [0, 1] runs along the centerline (s=0 top, s=1 bottom), arc-length normalized.
+    - t in [-W/2, W/2] runs across the blank width; t=0 is the centerline.
+    - The surface is R(s, t) = C(s) + t * n, where n is the constant unit normal
+      of the centerline plane (the width axis).
+    """
 
     centerline: np.ndarray
     s_values: np.ndarray
@@ -39,8 +46,13 @@ class RibbonSurface:
         zs = np.interp(s_arr, self.s_values, self.centerline[:, 2])
         return np.column_stack([xs, ys, zs])
 
-    def apply_transform(self, points: np.ndarray) -> np.ndarray:
+    def to_oriented(self, points: np.ndarray) -> np.ndarray:
+        """Map points into the oriented ribbon frame (terminal line on y=z=0)."""
         return _apply_terminal_line_transform(points, self.rotation, self.yz_offset, self.z_sign)
+
+    def from_oriented(self, points: np.ndarray) -> np.ndarray:
+        """Map points from the oriented ribbon frame back to the source frame."""
+        return _undo_terminal_line_transform(points, self.rotation, self.yz_offset, self.z_sign)
 
 
 def sample_outline_arcs(
@@ -280,11 +292,32 @@ def _apply_terminal_line_transform(
     yz_offset: np.ndarray,
     z_sign: float,
 ) -> np.ndarray:
+    """Rotate/translate/flip points into the oriented ribbon frame.
+
+    Steps:
+    1) Rotate so the centerline end-to-end line aligns with +X.
+    2) Translate so the start point has y=0, z=0.
+    3) Flip z so the ribbon sits in +Z.
+    """
     rotated = points @ rotation.T
     rotated[:, 1] -= yz_offset[1]
     rotated[:, 2] -= yz_offset[2]
     rotated[:, 2] *= float(z_sign)
     return rotated
+
+
+def _undo_terminal_line_transform(
+    points: np.ndarray,
+    rotation: np.ndarray,
+    yz_offset: np.ndarray,
+    z_sign: float,
+) -> np.ndarray:
+    """Inverse of _apply_terminal_line_transform."""
+    pts = np.asarray(points, dtype=float).copy()
+    pts[:, 2] *= float(z_sign)
+    pts[:, 1] += yz_offset[1]
+    pts[:, 2] += yz_offset[2]
+    return pts @ rotation
 
 
 def _orient_centerline(centerline: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:

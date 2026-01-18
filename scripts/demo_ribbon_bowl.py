@@ -87,7 +87,7 @@ def _plot_soundboard_outline(ax, lute, samples_per_arc: int, surface) -> None:
             continue
         pts = normalize_outline_points(lute, pts)
         pts3 = np.column_stack([pts[:, 0], pts[:, 1], np.zeros(pts.shape[0], dtype=float)])
-        pts3 = surface.apply_transform(pts3)
+        pts3 = surface.to_oriented(pts3)
         zs = pts3[:, 2]
         label = "soundboard" if idx == 0 else None
         ax.plot(pts3[:, 0], pts3[:, 1], zs, color="0.3", alpha=0.4, label=label)
