@@ -1,8 +1,8 @@
 """Ribbon-based bowl construction helpers (stage 1 scaffolding)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterable
+from dataclasses import dataclass, field
+from typing import Callable, Iterable, Sequence
 
 import numpy as np
 
@@ -16,6 +16,73 @@ _EPS = 1e-9
 class Plane:
     point: np.ndarray
     normal: np.ndarray
+
+
+@dataclass
+class ChainedTerminalStrategy:
+    """Stateful helper to choose terminal s values for chained ribs.
+
+    Constraints enforced:
+    - Symmetry: index sign is ignored (abs index).
+    - Monotonic offsets: offset magnitude cannot shrink and sign cannot flip.
+    - Ordering: s_top <= s_bottom (clamped if needed).
+    Call in non-decreasing abs index order: 0, 1, 2, ...
+    """
+
+    top_offset_fn: Callable[[int], float]
+    bottom_offset_fn: Callable[[int], float]
+    base_top_s: float = 0.0
+    base_bottom_s: float = 1.0
+    min_s: float = 0.0
+    max_s: float = 1.0
+    _last_abs_index: int = field(init=False, default=-1)
+    _last_top_offset: float = field(init=False, default=0.0)
+    _last_bottom_offset: float = field(init=False, default=0.0)
+
+    def s_for_index(self, index: int) -> tuple[float, float]:
+        abs_idx = abs(int(index))
+        if abs_idx < self._last_abs_index:
+            raise ValueError("ChainedTerminalStrategy expects non-decreasing abs index order.")
+
+        top_offset = float(self.top_offset_fn(abs_idx))
+        bottom_offset = float(self.bottom_offset_fn(abs_idx))
+        if self._last_abs_index >= 0 and abs_idx > 0:
+            top_offset = _enforce_monotonic_offset(self._last_top_offset, top_offset)
+            bottom_offset = _enforce_monotonic_offset(self._last_bottom_offset, bottom_offset)
+
+        top_s = _clamp(self.base_top_s + top_offset, self.min_s, self.max_s)
+        bottom_s = _clamp(self.base_bottom_s + bottom_offset, self.min_s, self.max_s)
+        if top_s > bottom_s:
+            top_s = bottom_s
+
+        self._last_abs_index = abs_idx
+        self._last_top_offset = top_s - self.base_top_s
+        self._last_bottom_offset = bottom_s - self.base_bottom_s
+        return top_s, bottom_s
+
+    def reset(self) -> None:
+        self._last_abs_index = -1
+        self._last_top_offset = 0.0
+        self._last_bottom_offset = 0.0
+
+
+@dataclass(frozen=True)
+class CenterRib:
+    top_point: np.ndarray
+    bottom_point: np.ndarray
+    negative_plane: Plane
+    positive_plane: Plane
+
+
+@dataclass(frozen=True)
+class RegularRib:
+    index: int
+    top_point: np.ndarray
+    bottom_point: np.ndarray
+    inner_plane: Plane
+    outer_plane: Plane
+    inner_source: str
+    mirrors: Sequence[Plane]
 
 
 @dataclass(frozen=True)
@@ -361,9 +428,132 @@ def _max_separation(
     return float(np.max(np.abs(t_b - t_a)))
 
 
+def _enforce_monotonic_offset(prev_offset: float, new_offset: float) -> float:
+    if abs(prev_offset) <= _EPS:
+        prev_sign = 1.0 if new_offset >= 0.0 else -1.0
+    else:
+        prev_sign = 1.0 if prev_offset >= 0.0 else -1.0
+    new_sign = 1.0 if new_offset >= 0.0 else -1.0
+    if new_sign != prev_sign:
+        new_offset = abs(new_offset) * prev_sign
+    if abs(new_offset) < abs(prev_offset):
+        new_offset = abs(prev_offset) * prev_sign
+    return new_offset
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def reflect_points_across_plane(points: np.ndarray, plane: Plane) -> np.ndarray:
+    pts = np.asarray(points, dtype=float)
+    normal = np.asarray(plane.normal, dtype=float)
+    normal /= np.linalg.norm(normal) + _EPS
+    delta = pts - np.asarray(plane.point, dtype=float)
+    return pts - 2.0 * (delta @ normal)[:, None] * normal
+
+
+def reflect_plane_across_plane(plane: Plane, mirror: Plane) -> Plane:
+    normal = np.asarray(mirror.normal, dtype=float)
+    normal /= np.linalg.norm(normal) + _EPS
+    point_ref = reflect_points_across_plane(np.asarray(plane.point, dtype=float)[None, :], mirror)[0]
+    plane_normal = np.asarray(plane.normal, dtype=float)
+    normal_ref = plane_normal - 2.0 * np.dot(plane_normal, normal) * normal
+    normal_ref /= np.linalg.norm(normal_ref) + _EPS
+    return Plane(point=point_ref, normal=normal_ref)
+
+
+def apply_reflections_to_points(points: np.ndarray, mirrors: Sequence[Plane]) -> np.ndarray:
+    transformed = np.asarray(points, dtype=float)
+    for mirror in mirrors:
+        transformed = reflect_points_across_plane(transformed, mirror)
+    return transformed
+
+
+def _apply_reflections_to_plane(plane: Plane, mirrors: Sequence[Plane]) -> Plane:
+    transformed = plane
+    for mirror in mirrors:
+        transformed = reflect_plane_across_plane(transformed, mirror)
+    return transformed
+
+
+def build_regular_rib_chain(
+    surface: RibbonSurface,
+    width: float,
+    terminal_strategy: ChainedTerminalStrategy,
+    *,
+    pairs: int = 1,
+    center_top_t: float = 0.0,
+    center_bottom_t: float = 0.0,
+) -> tuple[CenterRib, Sequence[RegularRib]]:
+    """Build a symmetric chain of regular ribs by reflecting across edge planes.
+
+    Adjacent ribs are built by reflection, so terminal s values must stay fixed
+    (index offsets are not supported here yet).
+    """
+    terminal_strategy.reset()
+    center_top_s, center_bottom_s = terminal_strategy.s_for_index(0)
+    center_top = surface.point_at(center_top_s, center_top_t)
+    center_bottom = surface.point_at(center_bottom_s, center_bottom_t)
+    pos_plane, neg_plane = surface.edge_planes_for_terminal_line(center_top, center_bottom, width)
+    center_rib = CenterRib(
+        top_point=center_top,
+        bottom_point=center_bottom,
+        negative_plane=neg_plane,
+        positive_plane=pos_plane,
+    )
+
+    tol = 1e-6
+    for idx in range(1, max(0, int(pairs)) + 1):
+        top_s, bottom_s = terminal_strategy.s_for_index(idx)
+        if abs(top_s - center_top_s) > tol or abs(bottom_s - center_bottom_s) > tol:
+            raise ValueError("Chained ribs require constant terminal s values for now.")
+
+    ribs: list[RegularRib] = []
+
+    def _append_chain(start_plane: Plane, inner_source: str, indices: Sequence[int]) -> None:
+        mirrors: list[Plane] = [start_plane]
+        source_inner = inner_source
+        for idx in indices:
+            inner_plane = _apply_reflections_to_plane(
+                pos_plane if source_inner == "pos" else neg_plane,
+                mirrors,
+            )
+            outer_plane = _apply_reflections_to_plane(
+                neg_plane if source_inner == "pos" else pos_plane,
+                mirrors,
+            )
+            ribs.append(
+                RegularRib(
+                    index=idx,
+                    top_point=center_top,
+                    bottom_point=center_bottom,
+                    inner_plane=inner_plane,
+                    outer_plane=outer_plane,
+                    inner_source=source_inner,
+                    mirrors=tuple(mirrors),
+                )
+            )
+            mirrors = mirrors + [outer_plane]
+            source_inner = "neg" if source_inner == "pos" else "pos"
+
+    if pairs > 0:
+        _append_chain(pos_plane, "pos", range(1, max(0, int(pairs)) + 1))
+        _append_chain(neg_plane, "neg", range(-1, -max(0, int(pairs)) - 1, -1))
+
+    return center_rib, ribs
+
+
 __all__ = [
+    "ChainedTerminalStrategy",
+    "CenterRib",
     "Plane",
+    "RegularRib",
     "RibbonSurface",
+    "build_regular_rib_chain",
+    "reflect_plane_across_plane",
+    "reflect_points_across_plane",
+    "apply_reflections_to_points",
     "sample_outline_arcs",
     "edge_curve",
     "ribbon_surface_grid",

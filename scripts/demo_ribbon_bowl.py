@@ -15,8 +15,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from lute_bowl.ribbon_bowl import (
+    ChainedTerminalStrategy,
     RibbonSurface,
-    default_terminal_points,
+    apply_reflections_to_points,
+    build_regular_rib_chain,
     edge_curve,
     normalize_outline_points,
     ribbon_surface_grid,
@@ -101,14 +103,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     width = float(args.width) if args.width is not None else float(lute.unit) / 4.0
 
     surface = RibbonSurface.from_outline(lute, samples_per_arc=args.arc_samples)
-    top_point, bottom_point = default_terminal_points(surface)
-    if any(value is not None for value in (args.top_s, args.top_t, args.bottom_s, args.bottom_t)):
-        top_s = 0.0 if args.top_s is None else args.top_s
-        top_t = 0.0 if args.top_t is None else args.top_t
-        bottom_s = 1.0 if args.bottom_s is None else args.bottom_s
-        bottom_t = 0.0 if args.bottom_t is None else args.bottom_t
-        top_point = surface.point_at(top_s, top_t)
-        bottom_point = surface.point_at(bottom_s, bottom_t)
+    top_s = 0.0 if args.top_s is None else args.top_s
+    top_t = 0.0 if args.top_t is None else args.top_t
+    bottom_s = 1.0 if args.bottom_s is None else args.bottom_s
+    bottom_t = 0.0 if args.bottom_t is None else args.bottom_t
 
     X, Y, Z = ribbon_surface_grid(
         surface,
@@ -131,11 +129,26 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ribs: list[np.ndarray] = []
     if args.show_edges:
-        plane_a, plane_b = surface.edge_planes_for_terminal_line(top_point, bottom_point, width)
-        ribs = [
-            edge_curve(surface, plane_a, sample_count=args.edge_samples),
-            edge_curve(surface, plane_b, sample_count=args.edge_samples),
-        ]
+        terminal_strategy = ChainedTerminalStrategy(
+            lambda _idx: 0.0,
+            lambda _idx: 0.0,
+            base_top_s=top_s,
+            base_bottom_s=bottom_s,
+        )
+        center_rib, chained_ribs = build_regular_rib_chain(
+            surface,
+            width,
+            terminal_strategy,
+            pairs=1,
+            center_top_t=top_t,
+            center_bottom_t=bottom_t,
+        )
+        base_pos = edge_curve(surface, center_rib.positive_plane, sample_count=args.edge_samples)
+        base_neg = edge_curve(surface, center_rib.negative_plane, sample_count=args.edge_samples)
+        ribs = [base_pos, base_neg]
+        for rib in chained_ribs:
+            outer_source = base_neg if rib.inner_source == "pos" else base_pos
+            ribs.append(apply_reflections_to_points(outer_source, rib.mirrors))
         edge_lines = []
         for idx, rib in enumerate(ribs):
             label = "edges" if idx == 0 else None
@@ -231,21 +244,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         new_ribs: list[np.ndarray] = []
         if args.show_edges:
             try:
-                plane_a, plane_b = surface.edge_planes_for_terminal_line(top_point, bottom_point, new_width)
-                new_ribs = [
-                    edge_curve(surface, plane_a, sample_count=args.edge_samples),
-                    edge_curve(surface, plane_b, sample_count=args.edge_samples),
-                ]
+                terminal_strategy = ChainedTerminalStrategy(
+                    lambda _idx: 0.0,
+                    lambda _idx: 0.0,
+                    base_top_s=top_s,
+                    base_bottom_s=bottom_s,
+                )
+                center_rib, chained_ribs = build_regular_rib_chain(
+                    surface,
+                    new_width,
+                    terminal_strategy,
+                    pairs=1,
+                    center_top_t=top_t,
+                    center_bottom_t=bottom_t,
+                )
+                base_pos = edge_curve(surface, center_rib.positive_plane, sample_count=args.edge_samples)
+                base_neg = edge_curve(surface, center_rib.negative_plane, sample_count=args.edge_samples)
+                new_ribs = [base_pos, base_neg]
+                for rib in chained_ribs:
+                    outer_source = base_neg if rib.inner_source == "pos" else base_pos
+                    new_ribs.append(apply_reflections_to_points(outer_source, rib.mirrors))
             except ValueError:
                 new_ribs = []
-            if len(edge_lines) >= 2:
-                for idx in range(2):
-                    if idx < len(new_ribs):
-                        edge_lines[idx].set_data(new_ribs[idx][:, 0], new_ribs[idx][:, 1])
-                        edge_lines[idx].set_3d_properties(new_ribs[idx][:, 2])
-                        edge_lines[idx].set_visible(True)
-                    else:
-                        edge_lines[idx].set_visible(False)
+            for line in edge_lines:
+                line.remove()
+            edge_lines.clear()
+            for idx, rib in enumerate(new_ribs):
+                label = "edges" if idx == 0 else None
+                (line,) = ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], color="tab:red", lw=1.4, label=label)
+                edge_lines.append(line)
         ribs = new_ribs
         _refresh_axes(x_grid, y_grid, z_grid, ribs)
         value_text.set_text(_format_width(new_width))
