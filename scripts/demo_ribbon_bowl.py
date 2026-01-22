@@ -107,6 +107,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     top_t = 0.0 if args.top_t is None else args.top_t
     bottom_s = 1.0 if args.bottom_s is None else args.bottom_s
     bottom_t = 0.0 if args.bottom_t is None else args.bottom_t
+    default_top_s = top_s
+    default_bottom_s = bottom_s
 
     X, Y, Z = ribbon_surface_grid(
         surface,
@@ -128,34 +130,66 @@ def main(argv: Sequence[str] | None = None) -> int:
     _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
 
     ribs: list[np.ndarray] = []
-    if args.show_edges:
+    edge_lines: list = []
+
+    def _compute_edges(width_val: float, top_s_val: float, bottom_s_val: float) -> list[np.ndarray]:
+        if not args.show_edges:
+            return []
+        if float(top_s_val) >= float(bottom_s_val):
+            return []
         terminal_strategy = ChainedTerminalStrategy(
             lambda _idx: 0.0,
             lambda _idx: 0.0,
-            base_top_s=top_s,
-            base_bottom_s=bottom_s,
+            base_top_s=top_s_val,
+            base_bottom_s=bottom_s_val,
+            min_s=-0.25,
+            max_s=1.25,
         )
-        center_rib, chained_ribs = build_regular_rib_chain(
+        try:
+            center_rib, chained_ribs = build_regular_rib_chain(
+                surface,
+                width_val,
+                terminal_strategy,
+                pairs=1,
+                center_top_t=top_t,
+                center_bottom_t=bottom_t,
+            )
+        except ValueError:
+            return []
+        base_pos = edge_curve(
             surface,
-            width,
-            terminal_strategy,
-            pairs=1,
-            center_top_t=top_t,
-            center_bottom_t=bottom_t,
+            center_rib.positive_plane,
+            sample_count=args.edge_samples,
+            s_min=top_s_val,
+            s_max=bottom_s_val,
         )
-        base_pos = edge_curve(surface, center_rib.positive_plane, sample_count=args.edge_samples)
-        base_neg = edge_curve(surface, center_rib.negative_plane, sample_count=args.edge_samples)
-        ribs = [base_pos, base_neg]
+        base_neg = edge_curve(
+            surface,
+            center_rib.negative_plane,
+            sample_count=args.edge_samples,
+            s_min=top_s_val,
+            s_max=bottom_s_val,
+        )
+        curves = [base_pos, base_neg]
         for rib in chained_ribs:
             outer_source = base_neg if rib.inner_source == "pos" else base_pos
-            ribs.append(apply_reflections_to_points(outer_source, rib.mirrors))
-        edge_lines = []
-        for idx, rib in enumerate(ribs):
+            curves.append(apply_reflections_to_points(outer_source, rib.mirrors))
+        return curves
+
+    def _set_edges(edge_curves: list[np.ndarray]) -> None:
+        nonlocal ribs
+        for line in edge_lines:
+            line.remove()
+        edge_lines.clear()
+        for idx, curve in enumerate(edge_curves):
             label = "edges" if idx == 0 else None
-            (line,) = ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], color="tab:red", lw=1.4, label=label)
+            (line,) = ax.plot(curve[:, 0], curve[:, 1], curve[:, 2], color="tab:red", lw=1.4, label=label)
             edge_lines.append(line)
-    else:
-        edge_lines = []
+        ribs = edge_curves
+
+    ribs = _compute_edges(width, top_s, bottom_s)
+    if args.show_edges:
+        _set_edges(ribs)
 
     def _refresh_axes(x_grid, y_grid, z_grid, edge_curves: list[np.ndarray]) -> None:
         xs = [x_grid.ravel()]
@@ -176,15 +210,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     panel_x = 0.08
     panel_w = 0.84
-    value_y = 0.92
-    slider_y = 0.82
     slider_h = 0.05
     slider_w = 0.58
     reset_w = 0.12
     gap_w = panel_w - slider_w - reset_w
-    reset_y = slider_y
     reset_h = slider_h * 0.85
-    slider_ax = panel_ax.inset_axes([panel_x, slider_y, slider_w, slider_h])
+    base_value_y = 0.92
+    base_slider_y = 0.82
+    control_gap = 0.22
     width_min = float(lute.unit) * 0.15
     width_max = float(lute.unit) * 1.0
     width_min = min(width_min, width)
@@ -194,38 +227,58 @@ def main(argv: Sequence[str] | None = None) -> int:
         if hasattr(lute, "unit_in_mm") and hasattr(lute, "unit")
         else 1.0
     )
-    value_text = panel_ax.text(
-        panel_x,
-        value_y,
-        "",
-        transform=panel_ax.transAxes,
-        ha="left",
-        va="top",
-    )
-    width_slider = Slider(
-        slider_ax,
-        "",
-        valmin=width_min,
-        valmax=width_max,
-        valinit=width,
-        valfmt="%.1f",
-    )
-    default_width = width
+    def _format_s(label: str, val: float) -> str:
+        return f"{label} | {val:.2f}"
 
-    reset_ax = panel_ax.inset_axes([panel_x + slider_w + gap_w, reset_y, reset_w, reset_h])
-    reset_button = Button(reset_ax, "↺")
-    width_slider.label.set_visible(False)
-    width_slider.valtext.set_visible(False)
+    default_width = width
 
     def _format_width(val: float) -> str:
         unit_val = float(val) / float(lute.unit)
         mm_val = float(val) * unit_scale
         return f"Rib Width | {unit_val:.2f} u / {mm_val:.2f} mm"
 
-    def _update_width(val: float) -> None:
-        nonlocal surface_plot, ribs
-        new_width = float(val)
-        x_grid, y_grid, z_grid = ribbon_surface_grid(
+    def _add_control(
+        row_idx: int,
+        valmin: float,
+        valmax: float,
+        valinit: float,
+    ) -> tuple[Slider, Button, any]:
+        value_y = base_value_y - row_idx * control_gap
+        slider_y = base_slider_y - row_idx * control_gap
+        slider_ax = panel_ax.inset_axes([panel_x, slider_y, slider_w, slider_h])
+        value_text = panel_ax.text(
+            panel_x,
+            value_y,
+            "",
+            transform=panel_ax.transAxes,
+            ha="left",
+            va="top",
+        )
+        slider = Slider(
+            slider_ax,
+            "",
+            valmin=valmin,
+            valmax=valmax,
+            valinit=valinit,
+            valfmt="%.2f",
+        )
+        slider.label.set_visible(False)
+        slider.valtext.set_visible(False)
+        reset_ax = panel_ax.inset_axes([panel_x + slider_w + gap_w, slider_y, reset_w, reset_h])
+        reset_button = Button(reset_ax, "↺")
+        separator_y = slider_y - 0.03
+        panel_ax.plot(
+            [panel_x, panel_x + panel_w],
+            [separator_y, separator_y],
+            transform=panel_ax.transAxes,
+            color="0.8",
+            lw=1.0,
+        )
+        return slider, reset_button, value_text
+
+    def _rebuild_surface(new_width: float) -> None:
+        nonlocal X, Y, Z, surface_plot
+        X, Y, Z = ribbon_surface_grid(
             surface,
             new_width,
             s_samples=args.surface_samples,
@@ -233,62 +286,57 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         surface_plot.remove()
         surface_plot = ax.plot_surface(
-            x_grid,
-            y_grid,
-            z_grid,
+            X,
+            Y,
+            Z,
             color="tab:blue",
             alpha=0.35,
             linewidth=0,
             antialiased=True,
         )
-        new_ribs: list[np.ndarray] = []
-        if args.show_edges:
-            try:
-                terminal_strategy = ChainedTerminalStrategy(
-                    lambda _idx: 0.0,
-                    lambda _idx: 0.0,
-                    base_top_s=top_s,
-                    base_bottom_s=bottom_s,
-                )
-                center_rib, chained_ribs = build_regular_rib_chain(
-                    surface,
-                    new_width,
-                    terminal_strategy,
-                    pairs=1,
-                    center_top_t=top_t,
-                    center_bottom_t=bottom_t,
-                )
-                base_pos = edge_curve(surface, center_rib.positive_plane, sample_count=args.edge_samples)
-                base_neg = edge_curve(surface, center_rib.negative_plane, sample_count=args.edge_samples)
-                new_ribs = [base_pos, base_neg]
-                for rib in chained_ribs:
-                    outer_source = base_neg if rib.inner_source == "pos" else base_pos
-                    new_ribs.append(apply_reflections_to_points(outer_source, rib.mirrors))
-            except ValueError:
-                new_ribs = []
-            for line in edge_lines:
-                line.remove()
-            edge_lines.clear()
-            for idx, rib in enumerate(new_ribs):
-                label = "edges" if idx == 0 else None
-                (line,) = ax.plot(rib[:, 0], rib[:, 1], rib[:, 2], color="tab:red", lw=1.4, label=label)
-                edge_lines.append(line)
-        ribs = new_ribs
-        _refresh_axes(x_grid, y_grid, z_grid, ribs)
-        value_text.set_text(_format_width(new_width))
+
+    def _update_edges() -> None:
+        new_ribs = _compute_edges(width, top_s, bottom_s)
+        _set_edges(new_ribs)
+        _refresh_axes(X, Y, Z, new_ribs)
+
+    def _update_width(val: float) -> None:
+        nonlocal width
+        width = float(val)
+        _rebuild_surface(width)
+        _update_edges()
+        width_value_text.set_text(_format_width(width))
         fig.canvas.draw_idle()
 
+    def _update_top_s(val: float) -> None:
+        nonlocal top_s
+        top_s = float(val)
+        _update_edges()
+        top_value_text.set_text(_format_s("Top s", top_s))
+        fig.canvas.draw_idle()
+
+    def _update_bottom_s(val: float) -> None:
+        nonlocal bottom_s
+        bottom_s = float(val)
+        _update_edges()
+        bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
+        fig.canvas.draw_idle()
+
+    width_slider, width_reset, width_value_text = _add_control(0, width_min, width_max, width)
+    top_slider, top_reset, top_value_text = _add_control(1, -0.25, 0.25, top_s)
+    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, 0.75, 1.25, bottom_s)
+
     width_slider.on_changed(_update_width)
-    value_text.set_text(_format_width(width))
-    reset_button.on_clicked(lambda _event: width_slider.set_val(default_width))
-    separator_y = slider_y - 0.03
-    panel_ax.plot(
-        [panel_x, panel_x + panel_w],
-        [separator_y, separator_y],
-        transform=panel_ax.transAxes,
-        color="0.8",
-        lw=1.0,
-    )
+    top_slider.on_changed(_update_top_s)
+    bottom_slider.on_changed(_update_bottom_s)
+
+    width_value_text.set_text(_format_width(width))
+    top_value_text.set_text(_format_s("Top s", top_s))
+    bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
+
+    width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
+    top_reset.on_clicked(lambda _event: top_slider.set_val(default_top_s))
+    bottom_reset.on_clicked(lambda _event: bottom_slider.set_val(default_bottom_s))
     plt.show()
     return 0
 

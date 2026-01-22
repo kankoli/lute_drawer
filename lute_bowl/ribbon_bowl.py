@@ -109,10 +109,7 @@ class RibbonSurface:
 
     def centerline_points(self, s_samples: Iterable[float]) -> np.ndarray:
         s_arr = np.asarray(list(s_samples), dtype=float)
-        xs = np.interp(s_arr, self.s_values, self.centerline[:, 0])
-        ys = np.interp(s_arr, self.s_values, self.centerline[:, 1])
-        zs = np.interp(s_arr, self.s_values, self.centerline[:, 2])
-        return np.column_stack([xs, ys, zs])
+        return _interp_centerline_points(self.centerline, self.s_values, s_arr)
 
     def to_oriented(self, points: np.ndarray) -> np.ndarray:
         """Map points into the oriented ribbon frame (terminal line on y=z=0)."""
@@ -146,8 +143,10 @@ class RibbonSurface:
         bottom_point: np.ndarray,
         width: float,
         *,
-        ref_s: float = 0.5,
+        ref_s: float | None = None,
         ref_offset: float | None = None,
+        s_min: float | None = None,
+        s_max: float | None = None,
         sample_count: int = 200,
         max_angle_deg: float = 89.0,
         angle_samples: int = 361,
@@ -158,6 +157,16 @@ class RibbonSurface:
             raise ValueError("Terminal points collapse; cannot define terminal line.")
         line_dir = line_dir / line_norm
 
+        s_low = 0.0 if s_min is None else float(s_min)
+        s_high = 1.0 if s_max is None else float(s_max)
+        if s_low > s_high:
+            s_low, s_high = s_high, s_low
+        if s_high - s_low <= _EPS:
+            raise ValueError("Terminal s range is degenerate.")
+
+        if ref_s is None:
+            ref_s = 0.5 * (s_low + s_high)
+        ref_s = max(s_low, min(s_high, float(ref_s)))
         ref_offset = 0.0 if ref_offset is None else float(ref_offset)
         ref_point = self.point_at(ref_s, ref_offset)
         try:
@@ -178,7 +187,7 @@ class RibbonSurface:
 
         max_angle = np.deg2rad(max_angle_deg)
         angles = np.linspace(-max_angle, max_angle, max(3, int(angle_samples)))
-        s_samples = np.linspace(0.0, 1.0, max(2, int(sample_count)))
+        s_samples = np.linspace(s_low, s_high, max(2, int(sample_count)))
         base = self.centerline_points(s_samples)
         half_width = float(width) * 0.5
         tol = 1e-7
@@ -229,8 +238,19 @@ def sample_outline_arcs(
     return normalize_outline_points(lute, points)
 
 
-def edge_curve(surface: RibbonSurface, plane: Plane, *, sample_count: int = 200) -> np.ndarray:
-    s_samples = np.linspace(0.0, 1.0, max(2, int(sample_count)))
+def edge_curve(
+    surface: RibbonSurface,
+    plane: Plane,
+    *,
+    sample_count: int = 200,
+    s_min: float | None = None,
+    s_max: float | None = None,
+) -> np.ndarray:
+    s_low = 0.0 if s_min is None else float(s_min)
+    s_high = 1.0 if s_max is None else float(s_max)
+    if s_low > s_high:
+        s_low, s_high = s_high, s_low
+    s_samples = np.linspace(s_low, s_high, max(2, int(sample_count)))
     base = surface.centerline_points(s_samples)
     denom = float(np.dot(plane.normal, surface.width_axis))
     if abs(denom) <= _EPS:
@@ -264,11 +284,7 @@ def default_terminal_points(surface: RibbonSurface) -> tuple[np.ndarray, np.ndar
 
 
 def _interp_centerline(centerline: np.ndarray, s_values: np.ndarray, s: float) -> np.ndarray:
-    s_val = float(s)
-    xs = np.interp(s_val, s_values, centerline[:, 0])
-    ys = np.interp(s_val, s_values, centerline[:, 1])
-    zs = np.interp(s_val, s_values, centerline[:, 2])
-    return np.array([xs, ys, zs], dtype=float)
+    return _interp_centerline_points(centerline, s_values, np.array([s], dtype=float))[0]
 
 
 def _cumulative_s(points: np.ndarray) -> np.ndarray:
@@ -279,6 +295,45 @@ def _cumulative_s(points: np.ndarray) -> np.ndarray:
         raise ValueError("Centerline length is too small.")
     s_vals = np.concatenate([[0.0], np.cumsum(seg)])
     return s_vals / total
+
+
+def _centerline_length(points: np.ndarray) -> float:
+    diffs = np.diff(points, axis=0)
+    return float(np.linalg.norm(diffs, axis=1).sum())
+
+
+def _interp_centerline_points(
+    centerline: np.ndarray, s_values: np.ndarray, s_arr: np.ndarray
+) -> np.ndarray:
+    s_vals = np.asarray(s_values, dtype=float)
+    queries = np.asarray(s_arr, dtype=float)
+    total_len = _centerline_length(centerline)
+    start = centerline[0]
+    end = centerline[-1]
+    start_dir = centerline[1] - centerline[0]
+    end_dir = centerline[-1] - centerline[-2]
+    start_dir /= np.linalg.norm(start_dir) + _EPS
+    end_dir /= np.linalg.norm(end_dir) + _EPS
+
+    result = np.empty((queries.size, 3), dtype=float)
+    mid_mask = (queries >= 0.0) & (queries <= 1.0)
+    low_mask = queries < 0.0
+    high_mask = queries > 1.0
+
+    if np.any(mid_mask):
+        q = queries[mid_mask]
+        xs = np.interp(q, s_vals, centerline[:, 0])
+        ys = np.interp(q, s_vals, centerline[:, 1])
+        zs = np.interp(q, s_vals, centerline[:, 2])
+        result[mid_mask] = np.column_stack([xs, ys, zs])
+    if np.any(low_mask):
+        offsets = (queries[low_mask] * total_len)[:, None]
+        result[low_mask] = start + offsets * start_dir
+    if np.any(high_mask):
+        offsets = ((queries[high_mask] - 1.0) * total_len)[:, None]
+        result[high_mask] = end + offsets * end_dir
+
+    return result
 
 
 def _plane_normal(points: np.ndarray) -> np.ndarray:
@@ -495,7 +550,15 @@ def build_regular_rib_chain(
     center_top_s, center_bottom_s = terminal_strategy.s_for_index(0)
     center_top = surface.point_at(center_top_s, center_top_t)
     center_bottom = surface.point_at(center_bottom_s, center_bottom_t)
-    pos_plane, neg_plane = surface.edge_planes_for_terminal_line(center_top, center_bottom, width)
+    ref_s = 0.5 * (center_top_s + center_bottom_s)
+    pos_plane, neg_plane = surface.edge_planes_for_terminal_line(
+        center_top,
+        center_bottom,
+        width,
+        ref_s=ref_s,
+        s_min=center_top_s,
+        s_max=center_bottom_s,
+    )
     center_rib = CenterRib(
         top_point=center_top,
         bottom_point=center_bottom,
