@@ -118,7 +118,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     import matplotlib.pyplot as plt
-    from matplotlib.widgets import Button, Slider
+    from matplotlib.widgets import Button, Slider, TextBox
 
     fig = plt.figure(figsize=(11, 8))
     grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.4], wspace=0.02)
@@ -132,7 +132,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     ribs: list[np.ndarray] = []
     edge_lines: list = []
 
-    def _compute_edges(width_val: float, top_s_val: float, bottom_s_val: float) -> list[np.ndarray]:
+    max_rib_count = 33
+    rib_count = 3
+    default_rib_count = rib_count
+    rib_text_updating = False
+
+    def _sanitize_rib_count(raw: str, current: int) -> int:
+        try:
+            value = int(float(raw))
+        except (TypeError, ValueError):
+            return current
+        value = max(1, min(max_rib_count, value))
+        if value % 2 == 0:
+            value -= 1
+        return max(1, value)
+
+    def _rib_pairs(count: int) -> int:
+        return max(0, (int(count) - 1) // 2)
+
+    def _compute_edges(
+        width_val: float,
+        top_s_val: float,
+        bottom_s_val: float,
+        rib_count_val: int,
+    ) -> list[np.ndarray]:
         if not args.show_edges:
             return []
         if float(top_s_val) >= float(bottom_s_val):
@@ -150,7 +173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 surface,
                 width_val,
                 terminal_strategy,
-                pairs=1,
+                pairs=_rib_pairs(rib_count_val),
                 center_top_t=top_t,
                 center_bottom_t=bottom_t,
             )
@@ -187,7 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             edge_lines.append(line)
         ribs = edge_curves
 
-    ribs = _compute_edges(width, top_s, bottom_s)
+    ribs = _compute_edges(width, top_s, bottom_s, rib_count)
     if args.show_edges:
         _set_edges(ribs)
 
@@ -229,6 +252,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     def _format_s(label: str, val: float) -> str:
         return f"{label} | {val:.2f}"
+
+    def _format_rib_count(val: int) -> str:
+        return f"Ribs | {int(val)}"
 
     default_width = width
 
@@ -296,7 +322,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     def _update_edges() -> None:
-        new_ribs = _compute_edges(width, top_s, bottom_s)
+        new_ribs = _compute_edges(width, top_s, bottom_s, rib_count)
         _set_edges(new_ribs)
         _refresh_axes(X, Y, Z, new_ribs)
 
@@ -325,18 +351,61 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_slider, width_reset, width_value_text = _add_control(0, width_min, width_max, width)
     top_slider, top_reset, top_value_text = _add_control(1, -0.25, 0.25, top_s)
     bottom_slider, bottom_reset, bottom_value_text = _add_control(2, 0.75, 1.25, bottom_s)
+    ribs_text_ax = panel_ax.inset_axes([panel_x, base_slider_y - 3 * control_gap, slider_w, slider_h])
+    ribs_text_box = TextBox(ribs_text_ax, "", initial=str(rib_count))
+    ribs_text_box.label.set_visible(False)
+    ribs_value_text = panel_ax.text(
+        panel_x,
+        base_value_y - 3 * control_gap,
+        "",
+        transform=panel_ax.transAxes,
+        ha="left",
+        va="top",
+    )
+    ribs_reset_ax = panel_ax.inset_axes(
+        [panel_x + slider_w + gap_w, base_slider_y - 3 * control_gap, reset_w, reset_h]
+    )
+    ribs_reset = Button(ribs_reset_ax, "↺")
+    separator_y = base_slider_y - 3 * control_gap - 0.03
+    panel_ax.plot(
+        [panel_x, panel_x + panel_w],
+        [separator_y, separator_y],
+        transform=panel_ax.transAxes,
+        color="0.8",
+        lw=1.0,
+    )
 
     width_slider.on_changed(_update_width)
     top_slider.on_changed(_update_top_s)
     bottom_slider.on_changed(_update_bottom_s)
 
+    def _update_rib_count(text: str) -> None:
+        nonlocal rib_count, rib_text_updating
+        if rib_text_updating:
+            return
+        rib_text_updating = True
+        try:
+            new_count = _sanitize_rib_count(text, rib_count)
+            rib_count = new_count
+            ribs_value_text.set_text(_format_rib_count(rib_count))
+            if str(new_count) != str(text).strip():
+                ribs_text_box.set_val(str(new_count))
+            _update_edges()
+            fig.canvas.draw_idle()
+        finally:
+            rib_text_updating = False
+
+    ribs_text_box.on_submit(_update_rib_count)
+
     width_value_text.set_text(_format_width(width))
     top_value_text.set_text(_format_s("Top s", top_s))
     bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
+    ribs_value_text.set_text(_format_rib_count(rib_count))
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
     top_reset.on_clicked(lambda _event: top_slider.set_val(default_top_s))
     bottom_reset.on_clicked(lambda _event: bottom_slider.set_val(default_bottom_s))
+    ribs_reset.on_clicked(lambda _event: ribs_text_box.set_val(str(default_rib_count)))
     plt.show()
     return 0
 
