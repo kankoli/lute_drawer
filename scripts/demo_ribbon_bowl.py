@@ -107,10 +107,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     top_t = 0.0 if args.top_t is None else args.top_t
     bottom_s = 1.0 if args.bottom_s is None else args.bottom_s
     bottom_t = 0.0 if args.bottom_t is None else args.bottom_t
+    top_z_offset = 0.0
+    bottom_z_offset = 0.0
     default_top_s = top_s
     default_bottom_s = bottom_s
+    default_top_z_offset = top_z_offset
+    default_bottom_z_offset = bottom_z_offset
+    top_s_min = -0.25
+    top_s_max = 0.25
+    bottom_s_min = 0.75
+    bottom_s_max = 1.25
 
-    X, Y, Z = ribbon_surface_grid(
+    X_base, Y_base, Z_base = ribbon_surface_grid(
         surface,
         width,
         s_samples=args.surface_samples,
@@ -126,13 +134,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     panel_ax = fig.add_subplot(grid[0, 1])
     panel_ax.set_axis_off()
     panel_ax.set_facecolor("0.96")
+    X, Y, Z = X_base, Y_base, Z_base
     surface_plot = ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
     _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
 
     ribs: list[np.ndarray] = []
     edge_lines: list = []
 
-    max_rib_count = 33
+    max_rib_count = 34
     rib_count = 3
     default_rib_count = rib_count
     rib_text_updating = False
@@ -160,13 +169,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return []
         if float(top_s_val) >= float(bottom_s_val):
             return []
+        min_s = min(top_s_min, bottom_s_min)
+        max_s = max(top_s_max, bottom_s_max)
         terminal_strategy = ChainedTerminalStrategy(
             lambda _idx: 0.0,
             lambda _idx: 0.0,
             base_top_s=top_s_val,
             base_bottom_s=bottom_s_val,
-            min_s=-0.25,
-            max_s=1.25,
+            min_s=min_s,
+            max_s=max_s,
         )
         try:
             center_rib, chained_ribs = build_regular_rib_chain(
@@ -240,7 +251,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     reset_h = slider_h * 0.85
     base_value_y = 0.92
     base_slider_y = 0.82
-    control_gap = 0.22
+    control_gap = 0.14
     width_min = float(lute.unit) * 0.15
     width_max = float(lute.unit) * 1.0
     width_min = min(width_min, width)
@@ -253,6 +264,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _format_s(label: str, val: float) -> str:
         return f"{label} | {val:.2f}"
 
+    def _format_offset(label: str, val: float) -> str:
+        unit_val = float(val) / float(lute.unit)
+        mm_val = float(val) * unit_scale
+        return f"{label} | {unit_val:.2f} u / {mm_val:.2f} mm"
+
     def _format_rib_count(val: int) -> str:
         return f"Ribs | {int(val)}"
 
@@ -262,6 +278,82 @@ def main(argv: Sequence[str] | None = None) -> int:
         unit_val = float(val) / float(lute.unit)
         mm_val = float(val) * unit_scale
         return f"Rib Width | {unit_val:.2f} u / {mm_val:.2f} mm"
+
+    def _rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
+        axis = np.asarray(axis, dtype=float)
+        axis /= np.linalg.norm(axis) + 1e-12
+        x, y, z = axis
+        c = float(np.cos(angle))
+        s = float(np.sin(angle))
+        one_c = 1.0 - c
+        return np.array(
+            [
+                [c + x * x * one_c, x * y * one_c - z * s, x * z * one_c + y * s],
+                [y * x * one_c + z * s, c + y * y * one_c, y * z * one_c - x * s],
+                [z * x * one_c - y * s, z * y * one_c + x * s, c + z * z * one_c],
+            ],
+            dtype=float,
+        )
+
+    def _rotate_vector(vec: np.ndarray, axis: np.ndarray, angle: float) -> np.ndarray:
+        return _rotation_matrix(axis, angle) @ vec
+
+    def _solve_tilt_angle(
+        top_ref: np.ndarray,
+        bottom_ref: np.ndarray,
+        delta_z: float,
+        axis: np.ndarray,
+        *,
+        max_angle_deg: float = 60.0,
+        samples: int = 721,
+    ) -> float:
+        if abs(delta_z) <= 1e-9:
+            return 0.0
+        axis = np.asarray(axis, dtype=float)
+        v = np.asarray(bottom_ref, dtype=float) - np.asarray(top_ref, dtype=float)
+        max_angle = np.deg2rad(max_angle_deg)
+        angles = np.linspace(-max_angle, max_angle, max(3, int(samples)))
+        best_angle = 0.0
+        best_err = float("inf")
+        for angle in angles:
+            rotated = _rotate_vector(v, axis, angle)
+            dz = float(rotated[2] - v[2])
+            err = abs(dz - float(delta_z))
+            if err < best_err:
+                best_err = err
+                best_angle = float(angle)
+        return best_angle
+
+    def _apply_z_transform(points: np.ndarray) -> np.ndarray:
+        if abs(top_z_offset) <= 1e-9 and abs(bottom_z_offset) <= 1e-9:
+            return np.asarray(points, dtype=float)
+        top_ref = surface.point_at(top_s, top_t)
+        bottom_ref = surface.point_at(bottom_s, bottom_t)
+        axis = surface.width_axis
+        z_shift = float(top_z_offset)
+        delta_z = float(bottom_z_offset) - float(top_z_offset)
+        angle = _solve_tilt_angle(top_ref, bottom_ref, delta_z, axis)
+        pts = np.asarray(points, dtype=float)
+        if abs(angle) <= 1e-12:
+            rotated = pts.copy()
+        else:
+            rot = _rotation_matrix(axis, angle)
+            rotated = (pts - top_ref) @ rot.T + top_ref
+        rotated[:, 2] += z_shift
+        return rotated
+
+    def _depth_range(samples: int = 200) -> tuple[float, float]:
+        s_vals = np.linspace(0.0, 1.0, max(2, int(samples)))
+        z_vals = surface.centerline_points(s_vals)[:, 2]
+        return float(z_vals.min()), float(z_vals.max())
+
+    depth_min, depth_max = _depth_range()
+    depth_span = max(1e-6, depth_max - depth_min)
+    z_offset_span = 0.5 * depth_span
+    top_z_min = -z_offset_span
+    top_z_max = z_offset_span
+    bottom_z_min = -z_offset_span
+    bottom_z_max = z_offset_span
 
     def _add_control(
         row_idx: int,
@@ -302,14 +394,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return slider, reset_button, value_text
 
-    def _rebuild_surface(new_width: float) -> None:
+    def _transformed_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        pts = np.column_stack([X_base.ravel(), Y_base.ravel(), Z_base.ravel()])
+        pts = _apply_z_transform(pts)
+        x_new = pts[:, 0].reshape(X_base.shape)
+        y_new = pts[:, 1].reshape(Y_base.shape)
+        z_new = pts[:, 2].reshape(Z_base.shape)
+        return x_new, y_new, z_new
+
+    def _update_surface_plot() -> None:
         nonlocal X, Y, Z, surface_plot
-        X, Y, Z = ribbon_surface_grid(
-            surface,
-            new_width,
-            s_samples=args.surface_samples,
-            t_samples=args.surface_width_samples,
-        )
+        X, Y, Z = _transformed_grid()
         surface_plot.remove()
         surface_plot = ax.plot_surface(
             X,
@@ -321,8 +416,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             antialiased=True,
         )
 
+    def _rebuild_surface(new_width: float) -> None:
+        nonlocal X_base, Y_base, Z_base
+        X_base, Y_base, Z_base = ribbon_surface_grid(
+            surface,
+            new_width,
+            s_samples=args.surface_samples,
+            t_samples=args.surface_width_samples,
+        )
+        _update_surface_plot()
+
     def _update_edges() -> None:
         new_ribs = _compute_edges(width, top_s, bottom_s, rib_count)
+        if new_ribs:
+            new_ribs = [_apply_z_transform(curve) for curve in new_ribs]
         _set_edges(new_ribs)
         _refresh_axes(X, Y, Z, new_ribs)
 
@@ -337,6 +444,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _update_top_s(val: float) -> None:
         nonlocal top_s
         top_s = float(val)
+        _update_surface_plot()
         _update_edges()
         top_value_text.set_text(_format_s("Top s", top_s))
         fig.canvas.draw_idle()
@@ -344,29 +452,50 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _update_bottom_s(val: float) -> None:
         nonlocal bottom_s
         bottom_s = float(val)
+        _update_surface_plot()
         _update_edges()
         bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
         fig.canvas.draw_idle()
 
+    def _update_top_z(val: float) -> None:
+        nonlocal top_z_offset
+        top_z_offset = float(val)
+        _update_surface_plot()
+        _update_edges()
+        top_z_value_text.set_text(_format_offset("Top z", top_z_offset))
+        fig.canvas.draw_idle()
+
+    def _update_bottom_z(val: float) -> None:
+        nonlocal bottom_z_offset
+        bottom_z_offset = float(val)
+        _update_surface_plot()
+        _update_edges()
+        bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
+        fig.canvas.draw_idle()
+
     width_slider, width_reset, width_value_text = _add_control(0, width_min, width_max, width)
-    top_slider, top_reset, top_value_text = _add_control(1, -0.25, 0.25, top_s)
-    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, 0.75, 1.25, bottom_s)
-    ribs_text_ax = panel_ax.inset_axes([panel_x, base_slider_y - 3 * control_gap, slider_w, slider_h])
+    top_slider, top_reset, top_value_text = _add_control(1, top_s_min, top_s_max, top_s)
+    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, bottom_s_min, bottom_s_max, bottom_s)
+    top_z_slider, top_z_reset, top_z_value_text = _add_control(3, top_z_min, top_z_max, top_z_offset)
+    bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_control(
+        4, bottom_z_min, bottom_z_max, bottom_z_offset
+    )
+    ribs_text_ax = panel_ax.inset_axes([panel_x, base_slider_y - 5 * control_gap, slider_w, slider_h])
     ribs_text_box = TextBox(ribs_text_ax, "", initial=str(rib_count))
     ribs_text_box.label.set_visible(False)
     ribs_value_text = panel_ax.text(
         panel_x,
-        base_value_y - 3 * control_gap,
+        base_value_y - 5 * control_gap,
         "",
         transform=panel_ax.transAxes,
         ha="left",
         va="top",
     )
     ribs_reset_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + gap_w, base_slider_y - 3 * control_gap, reset_w, reset_h]
+        [panel_x + slider_w + gap_w, base_slider_y - 5 * control_gap, reset_w, reset_h]
     )
     ribs_reset = Button(ribs_reset_ax, "↺")
-    separator_y = base_slider_y - 3 * control_gap - 0.03
+    separator_y = base_slider_y - 5 * control_gap - 0.03
     panel_ax.plot(
         [panel_x, panel_x + panel_w],
         [separator_y, separator_y],
@@ -378,6 +507,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_slider.on_changed(_update_width)
     top_slider.on_changed(_update_top_s)
     bottom_slider.on_changed(_update_bottom_s)
+    top_z_slider.on_changed(_update_top_z)
+    bottom_z_slider.on_changed(_update_bottom_z)
 
     def _update_rib_count(text: str) -> None:
         nonlocal rib_count, rib_text_updating
@@ -400,11 +531,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_value_text.set_text(_format_width(width))
     top_value_text.set_text(_format_s("Top s", top_s))
     bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
+    top_z_value_text.set_text(_format_offset("Top z", top_z_offset))
+    bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
     ribs_value_text.set_text(_format_rib_count(rib_count))
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
     top_reset.on_clicked(lambda _event: top_slider.set_val(default_top_s))
     bottom_reset.on_clicked(lambda _event: bottom_slider.set_val(default_bottom_s))
+    top_z_reset.on_clicked(lambda _event: top_z_slider.set_val(default_top_z_offset))
+    bottom_z_reset.on_clicked(lambda _event: bottom_z_slider.set_val(default_bottom_z_offset))
     ribs_reset.on_clicked(lambda _event: ribs_text_box.set_val(str(default_rib_count)))
     plt.show()
     return 0
