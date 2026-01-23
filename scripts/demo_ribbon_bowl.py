@@ -54,6 +54,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--surface-width-samples", type=int, default=20, help="Samples across the rib width.")
     parser.add_argument("--show-edges", action="store_true", help="Overlay rib edge curves.")
     parser.add_argument(
+        "--show-neck-plane",
+        action="store_true",
+        help="Draw the neck-joint plane and its intersection with the bowl surface.",
+    )
+    parser.add_argument(
         "--top-s",
         type=float,
         default=None,
@@ -99,7 +104,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     lute_path = args.lute or DEFAULT_LUTE
     lute_cls = lute_path if isinstance(lute_path, type) else _resolve_class(lute_path)
     lute = lute_cls()
-
     width = float(args.width) if args.width is not None else float(lute.unit) / 4.0
 
     surface = RibbonSurface.from_outline(lute, samples_per_arc=args.arc_samples)
@@ -140,6 +144,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ribs: list[np.ndarray] = []
     edge_lines: list = []
+    neck_plane = None
+    neck_curve_line = None
 
     max_rib_count = 34
     rib_count = 3
@@ -225,14 +231,111 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.show_edges:
         _set_edges(ribs)
 
+    def _neck_plane_x() -> float | None:
+        neck_point = getattr(lute, "point_neck_joint", None)
+        if neck_point is None:
+            return None
+        pt2 = np.array([[float(neck_point.x), float(neck_point.y)]], dtype=float)
+        pt2 = normalize_outline_points(lute, pt2)
+        pt3 = np.array([[pt2[0, 0], pt2[0, 1], 0.0]], dtype=float)
+        pt3 = surface.to_oriented(pt3)[0]
+        return float(pt3[0])
+
+    neck_plane_x = _neck_plane_x()
+
+    def _neck_profile_points(x_val: float, samples: int = 260) -> np.ndarray:
+        s_vals = np.linspace(top_s, bottom_s, max(2, int(samples)))
+        base = surface.centerline_points(s_vals)
+        axis = surface.width_axis
+        rot, pivot, z_shift, angle = _current_transform()
+        if abs(angle) <= 1e-12:
+            rot_base = base
+            rot_axis = axis
+        else:
+            rot_base = (base - pivot) @ rot.T + pivot
+            rot_axis = rot @ axis
+        denom = float(rot_axis[0])
+        if abs(denom) <= 1e-9:
+            close = np.isclose(rot_base[:, 0], x_val, atol=1e-6)
+            if not np.any(close):
+                return np.empty((0, 3), dtype=float)
+            pts = rot_base[close].copy()
+            pts[:, 2] += z_shift
+            return pts
+        t_vals = (float(x_val) - rot_base[:, 0]) / denom
+        half_width = 0.5 * float(width)
+        mask = (t_vals >= -half_width) & (t_vals <= half_width)
+        if not np.any(mask):
+            return np.empty((0, 3), dtype=float)
+        pts = rot_base[mask] + t_vals[mask][:, None] * rot_axis
+        pts[:, 2] += z_shift
+        return pts
+
+    def _neck_plane_center(x_val: float, samples: int = 260) -> tuple[float, float]:
+        s_vals = np.linspace(top_s, bottom_s, max(2, int(samples)))
+        base = surface.centerline_points(s_vals)
+        rot, pivot, z_shift, angle = _current_transform()
+        if abs(angle) <= 1e-12:
+            rot_base = base
+        else:
+            rot_base = (base - pivot) @ rot.T + pivot
+        idx = int(np.argmin(np.abs(rot_base[:, 0] - float(x_val))))
+        center = rot_base[idx].copy()
+        center[2] += z_shift
+        return float(center[1]), float(center[2])
+
+    def _plot_neck_plane(x_val: float) -> None:
+        nonlocal neck_plane, neck_curve_line
+        if neck_plane is not None:
+            neck_plane.remove()
+        if neck_curve_line is not None:
+            neck_curve_line.remove()
+            neck_curve_line = None
+        plane_size = 2.0 * float(lute.unit)
+        half = 0.5 * plane_size
+        y_center, z_center = _neck_plane_center(float(x_val))
+        y_min, y_max = y_center - half, y_center + half
+        z_min, z_max = z_center - half, z_center + half
+        Yp, Zp = np.meshgrid([y_min, y_max], [z_min, z_max])
+        Xp = np.full_like(Yp, float(x_val))
+        neck_plane = ax.plot_surface(Xp, Yp, Zp, color="orange", alpha=0.15, linewidth=0)
+        curve = _neck_profile_points(float(x_val))
+        if curve.shape[0] >= 2:
+            (neck_curve_line,) = ax.plot(
+                curve[:, 0],
+                curve[:, 1],
+                curve[:, 2],
+                color="orange",
+                lw=1.6,
+                label="neck profile",
+            )
+
+    def _clip_curve_by_neck_plane(points: np.ndarray) -> np.ndarray:
+        if not args.show_neck_plane or neck_plane_x is None:
+            return points
+        pts = np.asarray(points, dtype=float)
+        return pts[pts[:, 0] >= float(neck_plane_x)]
+
+    def _append_bounds(store: list[np.ndarray], arr: np.ndarray) -> None:
+        vals = np.asarray(arr, dtype=float).ravel()
+        vals = vals[np.isfinite(vals)]
+        if vals.size:
+            store.append(vals)
+
     def _refresh_axes(x_grid, y_grid, z_grid, edge_curves: list[np.ndarray]) -> None:
-        xs = [x_grid.ravel()]
-        ys = [y_grid.ravel()]
-        zs = [z_grid.ravel()]
+        xs: list[np.ndarray] = []
+        ys: list[np.ndarray] = []
+        zs: list[np.ndarray] = []
+        _append_bounds(xs, x_grid)
+        _append_bounds(ys, y_grid)
+        _append_bounds(zs, z_grid)
         if edge_curves:
-            xs.extend([curve[:, 0] for curve in edge_curves])
-            ys.extend([curve[:, 1] for curve in edge_curves])
-            zs.extend([curve[:, 2] for curve in edge_curves])
+            for curve in edge_curves:
+                _append_bounds(xs, curve[:, 0])
+                _append_bounds(ys, curve[:, 1])
+                _append_bounds(zs, curve[:, 2])
+        if not xs or not ys or not zs:
+            return
         set_axes_equal_3d(ax, xs=np.concatenate(xs), ys=np.concatenate(ys), zs=np.concatenate(zs))
 
     _refresh_axes(X, Y, Z, ribs)
@@ -324,21 +427,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 best_angle = float(angle)
         return best_angle
 
-    def _apply_z_transform(points: np.ndarray) -> np.ndarray:
-        if abs(top_z_offset) <= 1e-9 and abs(bottom_z_offset) <= 1e-9:
-            return np.asarray(points, dtype=float)
+    def _current_transform() -> tuple[np.ndarray, np.ndarray, float, float]:
         top_ref = surface.point_at(top_s, top_t)
         bottom_ref = surface.point_at(bottom_s, bottom_t)
         axis = surface.width_axis
         z_shift = float(top_z_offset)
         delta_z = float(bottom_z_offset) - float(top_z_offset)
         angle = _solve_tilt_angle(top_ref, bottom_ref, delta_z, axis)
+        if abs(angle) <= 1e-12:
+            return np.eye(3), top_ref, z_shift, 0.0
+        return _rotation_matrix(axis, angle), top_ref, z_shift, angle
+
+    def _apply_z_transform(points: np.ndarray) -> np.ndarray:
+        if abs(top_z_offset) <= 1e-9 and abs(bottom_z_offset) <= 1e-9:
+            return np.asarray(points, dtype=float)
+        rot, pivot, z_shift, angle = _current_transform()
         pts = np.asarray(points, dtype=float)
         if abs(angle) <= 1e-12:
             rotated = pts.copy()
         else:
-            rot = _rotation_matrix(axis, angle)
-            rotated = (pts - top_ref) @ rot.T + top_ref
+            rotated = (pts - pivot) @ rot.T + pivot
         rotated[:, 2] += z_shift
         return rotated
 
@@ -400,6 +508,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         x_new = pts[:, 0].reshape(X_base.shape)
         y_new = pts[:, 1].reshape(Y_base.shape)
         z_new = pts[:, 2].reshape(Z_base.shape)
+        if args.show_neck_plane and neck_plane_x is not None:
+            mask = x_new < float(neck_plane_x)
+            if np.any(mask):
+                x_new = x_new.copy()
+                y_new = y_new.copy()
+                z_new = z_new.copy()
+                x_new[mask] = np.nan
+                y_new[mask] = np.nan
+                z_new[mask] = np.nan
         return x_new, y_new, z_new
 
     def _update_surface_plot() -> None:
@@ -415,6 +532,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             linewidth=0,
             antialiased=True,
         )
+        if args.show_neck_plane and neck_plane_x is not None:
+            _plot_neck_plane(neck_plane_x)
 
     def _rebuild_surface(new_width: float) -> None:
         nonlocal X_base, Y_base, Z_base
@@ -429,9 +548,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _update_edges() -> None:
         new_ribs = _compute_edges(width, top_s, bottom_s, rib_count)
         if new_ribs:
-            new_ribs = [_apply_z_transform(curve) for curve in new_ribs]
+            new_ribs = [_clip_curve_by_neck_plane(_apply_z_transform(curve)) for curve in new_ribs]
         _set_edges(new_ribs)
         _refresh_axes(X, Y, Z, new_ribs)
+        if args.show_neck_plane and neck_plane_x is not None:
+            _plot_neck_plane(neck_plane_x)
+
+    if args.show_neck_plane and neck_plane_x is not None:
+        _update_surface_plot()
+        _update_edges()
 
     def _update_width(val: float) -> None:
         nonlocal width
