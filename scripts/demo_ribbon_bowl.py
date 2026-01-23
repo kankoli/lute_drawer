@@ -52,7 +52,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--edge-samples", type=int, default=250, help="Samples along each rib edge.")
     parser.add_argument("--surface-samples", type=int, default=200, help="Samples along the rib length.")
     parser.add_argument("--surface-width-samples", type=int, default=20, help="Samples across the rib width.")
-    parser.add_argument("--show-edges", action="store_true", help="Overlay rib edge curves.")
     parser.add_argument(
         "--hide-neck-plane",
         action="store_false",
@@ -173,8 +172,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         bottom_s_val: float,
         rib_count_val: int,
     ) -> list[np.ndarray]:
-        if not args.show_edges:
-            return []
         if float(top_s_val) >= float(bottom_s_val):
             return []
         min_s = min(top_s_min, bottom_s_min)
@@ -230,8 +227,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ribs = edge_curves
 
     ribs = _compute_edges(width, top_s, bottom_s, rib_count)
-    if args.show_edges:
-        _set_edges(ribs)
+    _set_edges(ribs)
 
     def _neck_plane_x() -> float | None:
         neck_point = getattr(lute, "point_neck_joint", None)
