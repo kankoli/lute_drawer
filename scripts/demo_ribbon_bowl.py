@@ -311,10 +311,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
     def _clip_curve_by_neck_plane(points: np.ndarray) -> np.ndarray:
-        if not args.show_neck_plane or neck_plane_x is None:
-            return points
         pts = np.asarray(points, dtype=float)
-        return pts[pts[:, 0] >= float(neck_plane_x)]
+        if args.show_neck_plane and neck_plane_x is not None:
+            pts = pts[pts[:, 0] >= float(neck_plane_x)]
+        pts = pts[pts[:, 2] >= 0.0]
+        return pts
 
     def _append_bounds(store: list[np.ndarray], arr: np.ndarray) -> None:
         vals = np.asarray(arr, dtype=float).ravel()
@@ -509,6 +510,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 x_new[mask] = np.nan
                 y_new[mask] = np.nan
                 z_new[mask] = np.nan
+        mask = z_new < 0.0
+        if np.any(mask):
+            x_new = x_new.copy()
+            y_new = y_new.copy()
+            z_new = z_new.copy()
+            x_new[mask] = np.nan
+            y_new[mask] = np.nan
+            z_new[mask] = np.nan
         return x_new, y_new, z_new
 
     def _update_surface_plot() -> None:
