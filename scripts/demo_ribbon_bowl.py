@@ -134,11 +134,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     from matplotlib.widgets import Button, Slider
 
     fig = plt.figure(figsize=(11, 8))
-    grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.4], wspace=0.02)
+    grid = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=[4.6, 1.4],
+        height_ratios=[1.0, 0.12],
+        wspace=0.02,
+        hspace=0.08,
+    )
     ax = fig.add_subplot(grid[0, 0], projection="3d")
     panel_ax = fig.add_subplot(grid[0, 1])
+    width_ax = fig.add_subplot(grid[1, :])
     panel_ax.set_axis_off()
     panel_ax.set_facecolor("0.96")
+    width_ax.set_axis_off()
+    width_ax.set_facecolor("0.96")
     X, Y, Z = X_base, Y_base, Z_base
     surface_plot = ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
     _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
@@ -379,7 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _format_width(val: float) -> str:
         unit_val = float(val) / float(lute.unit)
         mm_val = float(val) * unit_scale
-        return f"Rib Width | {unit_val:.2f} u / {mm_val:.2f} mm"
+        return f"Rib Width | {unit_val:.3f} u / {mm_val:.3f} mm"
 
     def _rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
         axis = np.asarray(axis, dtype=float)
@@ -565,6 +575,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         width_value_text.set_text(_format_width(width))
         fig.canvas.draw_idle()
 
+    width_step = 0.001 * float(lute.unit)
+
+    def _nudge_width(step: float) -> None:
+        new_val = float(width_slider.val) + float(step)
+        new_val = max(width_min, min(width_max, new_val))
+        width_slider.set_val(new_val)
+
     def _update_top_s(val: float) -> None:
         nonlocal top_s
         top_s = float(val)
@@ -597,35 +614,63 @@ def main(argv: Sequence[str] | None = None) -> int:
         bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
         fig.canvas.draw_idle()
 
-    width_slider, width_reset, width_value_text = _add_control(0, width_min, width_max, width)
-    top_slider, top_reset, top_value_text = _add_control(1, top_s_min, top_s_max, top_s)
-    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, bottom_s_min, bottom_s_max, bottom_s)
-    top_z_slider, top_z_reset, top_z_value_text = _add_control(3, top_z_min, top_z_max, top_z_offset)
+    width_value_text = width_ax.text(
+        0.02,
+        0.9,
+        "",
+        transform=width_ax.transAxes,
+        ha="left",
+        va="top",
+    )
+    width_slider_ax = width_ax.inset_axes([0.02, 0.2, 0.74, 0.55])
+    width_slider = Slider(
+        width_slider_ax,
+        "",
+        valmin=width_min,
+        valmax=width_max,
+        valinit=width,
+        valfmt="%.3f",
+    )
+    width_slider.label.set_visible(False)
+    width_slider.valtext.set_visible(False)
+    width_button_h = 0.55
+    width_button_y = 0.2
+    width_button_w = 0.05
+    width_minus_ax = width_ax.inset_axes([0.78, width_button_y, width_button_w, width_button_h])
+    width_plus_ax = width_ax.inset_axes([0.84, width_button_y, width_button_w, width_button_h])
+    width_reset_ax = width_ax.inset_axes([0.90, width_button_y, 0.07, width_button_h])
+    width_minus = Button(width_minus_ax, "-")
+    width_plus = Button(width_plus_ax, "+")
+    width_reset = Button(width_reset_ax, "↺")
+
+    top_slider, top_reset, top_value_text = _add_control(0, top_s_min, top_s_max, top_s)
+    bottom_slider, bottom_reset, bottom_value_text = _add_control(1, bottom_s_min, bottom_s_max, bottom_s)
+    top_z_slider, top_z_reset, top_z_value_text = _add_control(2, top_z_min, top_z_max, top_z_offset)
     bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_control(
-        4, bottom_z_min, bottom_z_max, bottom_z_offset
+        3, bottom_z_min, bottom_z_max, bottom_z_offset
     )
     ribs_value_text = panel_ax.text(
         panel_x,
-        base_value_y - 5 * control_gap,
+        base_value_y - 4 * control_gap,
         "",
         transform=panel_ax.transAxes,
         ha="left",
         va="top",
     )
     ribs_reset_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + gap_w, base_slider_y - 5 * control_gap, reset_w, reset_h]
+        [panel_x + slider_w + gap_w, base_slider_y - 4 * control_gap, reset_w, reset_h]
     )
     ribs_reset = Button(ribs_reset_ax, "↺")
     rib_button_w = 0.05
     rib_button_gap = 0.02
-    rib_button_y = base_slider_y - 5 * control_gap
+    rib_button_y = base_slider_y - 4 * control_gap
     rib_minus_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, rib_button_y, rib_button_w, reset_h])
     rib_plus_ax = panel_ax.inset_axes(
         [panel_x + slider_w + 0.01 + rib_button_w + rib_button_gap, rib_button_y, rib_button_w, reset_h]
     )
     rib_minus = Button(rib_minus_ax, "-")
     rib_plus = Button(rib_plus_ax, "+")
-    separator_y = base_slider_y - 5 * control_gap - 0.03
+    separator_y = base_slider_y - 4 * control_gap - 0.03
     panel_ax.plot(
         [panel_x, panel_x + panel_w],
         [separator_y, separator_y],
@@ -665,6 +710,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ribs_value_text.set_text(_format_rib_count(rib_count))
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
+    width_minus.on_clicked(lambda _event: _nudge_width(-width_step))
+    width_plus.on_clicked(lambda _event: _nudge_width(width_step))
     top_reset.on_clicked(lambda _event: top_slider.set_val(default_top_s))
     bottom_reset.on_clicked(lambda _event: bottom_slider.set_val(default_bottom_s))
     top_z_reset.on_clicked(lambda _event: top_z_slider.set_val(default_top_z_offset))

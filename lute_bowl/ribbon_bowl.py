@@ -147,9 +147,9 @@ class RibbonSurface:
         ref_offset: float | None = None,
         s_min: float | None = None,
         s_max: float | None = None,
-        sample_count: int = 200,
+        sample_count: int = 800,
         max_angle_deg: float = 89.0,
-        angle_samples: int = 361,
+        angle_samples: int = 3001,
     ) -> tuple[Plane, Plane]:
         line_dir = np.asarray(bottom_point, dtype=float) - np.asarray(top_point, dtype=float)
         line_norm = np.linalg.norm(line_dir)
