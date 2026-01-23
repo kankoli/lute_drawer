@@ -131,7 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     import matplotlib.pyplot as plt
-    from matplotlib.widgets import Button, Slider, TextBox
+    from matplotlib.widgets import Button, Slider
 
     fig = plt.figure(figsize=(11, 8))
     grid = fig.add_gridspec(1, 2, width_ratios=[4.6, 1.4], wspace=0.02)
@@ -604,9 +604,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_control(
         4, bottom_z_min, bottom_z_max, bottom_z_offset
     )
-    ribs_text_ax = panel_ax.inset_axes([panel_x, base_slider_y - 5 * control_gap, slider_w, slider_h])
-    ribs_text_box = TextBox(ribs_text_ax, "", initial=str(rib_count))
-    ribs_text_box.label.set_visible(False)
     ribs_value_text = panel_ax.text(
         panel_x,
         base_value_y - 5 * control_gap,
@@ -619,6 +616,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         [panel_x + slider_w + gap_w, base_slider_y - 5 * control_gap, reset_w, reset_h]
     )
     ribs_reset = Button(ribs_reset_ax, "↺")
+    rib_button_w = 0.05
+    rib_button_gap = 0.02
+    rib_button_y = base_slider_y - 5 * control_gap
+    rib_minus_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, rib_button_y, rib_button_w, reset_h])
+    rib_plus_ax = panel_ax.inset_axes(
+        [panel_x + slider_w + 0.01 + rib_button_w + rib_button_gap, rib_button_y, rib_button_w, reset_h]
+    )
+    rib_minus = Button(rib_minus_ax, "-")
+    rib_plus = Button(rib_plus_ax, "+")
     separator_y = base_slider_y - 5 * control_gap - 0.03
     panel_ax.plot(
         [panel_x, panel_x + panel_w],
@@ -643,14 +649,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             new_count = _sanitize_rib_count(text, rib_count)
             rib_count = new_count
             ribs_value_text.set_text(_format_rib_count(rib_count))
-            if str(new_count) != str(text).strip():
-                ribs_text_box.set_val(str(new_count))
             _update_edges()
             fig.canvas.draw_idle()
         finally:
             rib_text_updating = False
 
-    ribs_text_box.on_submit(_update_rib_count)
+    def _nudge_rib_count(step: int) -> None:
+        _update_rib_count(str(rib_count + step))
 
     width_value_text.set_text(_format_width(width))
     top_value_text.set_text(_format_s("Top s", top_s))
@@ -664,7 +669,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     bottom_reset.on_clicked(lambda _event: bottom_slider.set_val(default_bottom_s))
     top_z_reset.on_clicked(lambda _event: top_z_slider.set_val(default_top_z_offset))
     bottom_z_reset.on_clicked(lambda _event: bottom_z_slider.set_val(default_bottom_z_offset))
-    ribs_reset.on_clicked(lambda _event: ribs_text_box.set_val(str(default_rib_count)))
+    ribs_reset.on_clicked(lambda _event: _update_rib_count(str(default_rib_count)))
+    rib_minus.on_clicked(lambda _event: _nudge_rib_count(-2))
+    rib_plus.on_clicked(lambda _event: _nudge_rib_count(2))
     plt.show()
     return 0
 
