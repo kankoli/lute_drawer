@@ -117,10 +117,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     default_bottom_s = bottom_s
     default_top_z_offset = top_z_offset
     default_bottom_z_offset = bottom_z_offset
-    top_s_min = -0.25
-    top_s_max = 0.25
-    bottom_s_min = 0.75
-    bottom_s_max = 1.25
+    top_s_min = -0.10
+    top_s_max = 0.10
+    bottom_s_min = 0.90
+    bottom_s_max = 1.10
 
     X_base, Y_base, Z_base = ribbon_surface_grid(
         surface,
@@ -147,8 +147,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     neck_plane = None
     neck_curve_line = None
 
-    max_rib_count = 34
-    rib_count = 3
+    max_rib_count = 25
+    rib_count = 19
     default_rib_count = rib_count
     rib_text_updating = False
 
@@ -157,10 +157,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             value = int(float(raw))
         except (TypeError, ValueError):
             return current
-        value = max(1, min(max_rib_count, value))
+        value = max(5, min(max_rib_count, value))
         if value % 2 == 0:
             value -= 1
-        return max(1, value)
+        return max(5, value)
 
     def _rib_pairs(count: int) -> int:
         return max(0, (int(count) - 1) // 2)
@@ -450,18 +450,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         rotated[:, 2] += z_shift
         return rotated
 
-    def _depth_range(samples: int = 200) -> tuple[float, float]:
-        s_vals = np.linspace(0.0, 1.0, max(2, int(samples)))
-        z_vals = surface.centerline_points(s_vals)[:, 2]
-        return float(z_vals.min()), float(z_vals.max())
-
-    depth_min, depth_max = _depth_range()
-    depth_span = max(1e-6, depth_max - depth_min)
-    z_offset_span = 0.5 * depth_span
-    top_z_min = -z_offset_span
-    top_z_max = z_offset_span
-    bottom_z_min = -z_offset_span
-    bottom_z_max = z_offset_span
+    top_z_min = -0.30 * float(lute.unit)
+    top_z_max = 0.10 * float(lute.unit)
+    bottom_z_min = -0.50 * float(lute.unit)
+    bottom_z_max = 0.50 * float(lute.unit)
 
     def _add_control(
         row_idx: int,
