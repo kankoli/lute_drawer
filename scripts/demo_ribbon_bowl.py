@@ -54,9 +54,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--surface-width-samples", type=int, default=20, help="Samples across the rib width.")
     parser.add_argument("--show-edges", action="store_true", help="Overlay rib edge curves.")
     parser.add_argument(
-        "--show-neck-plane",
-        action="store_true",
-        help="Draw the neck-joint plane and its intersection with the bowl surface.",
+        "--hide-neck-plane",
+        action="store_false",
+        default=True,
+        dest="show_neck_plane",
+        help="Hide the neck-joint plane and its intersection with the bowl surface.",
     )
     parser.add_argument(
         "--top-s",
