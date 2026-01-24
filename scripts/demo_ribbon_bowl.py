@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import importlib
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -55,6 +57,10 @@ def _available_lutes() -> list[tuple[str, type]]:
         if isinstance(cls, type):
             choices.append((_class_path(cls), cls))
     return sorted(choices, key=lambda item: item[0])
+
+
+def _default_preset_name() -> str:
+    return datetime.now().strftime("preset-%Y%m%d-%H%M%S")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -162,24 +168,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     import matplotlib.pyplot as plt
-    from matplotlib.widgets import Button, Slider
+    from matplotlib.widgets import Slider
+    from plotting.ui import Dropdown, HBox, VBox, add_button, add_text, add_textbox, split_vertical, style_panel
 
-    fig = plt.figure(figsize=(11, 8))
+    fig = plt.figure(figsize=(11, 8.5))
     grid = fig.add_gridspec(
-        2,
+        3,
         2,
         width_ratios=[4.6, 1.4],
-        height_ratios=[1.0, 0.12],
+        height_ratios=[1.0, 0.12, 0.12],
         wspace=0.02,
         hspace=0.08,
     )
     ax = fig.add_subplot(grid[0, 0], projection="3d")
     panel_ax = fig.add_subplot(grid[0, 1])
     width_ax = fig.add_subplot(grid[1, :])
-    panel_ax.set_axis_off()
-    panel_ax.set_facecolor("0.96")
-    width_ax.set_axis_off()
-    width_ax.set_facecolor("0.96")
+    preset_ax = fig.add_subplot(grid[2, :])
+    style_panel(panel_ax)
+    style_panel(width_ax)
+    style_panel(preset_ax)
     X, Y, Z = X_base, Y_base, Z_base
     surface_plot = ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
     soundboard_lines = _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
@@ -394,16 +401,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     ax.legend(loc="best")
     ax.set_title(type(lute).__name__)
 
-    panel_x = 0.08
-    panel_w = 0.84
-    slider_h = 0.05
-    slider_w = 0.58
-    reset_w = 0.12
-    gap_w = panel_w - slider_w - reset_w
-    reset_h = slider_h * 0.85
-    base_value_y = 0.92
-    base_slider_y = 0.82
-    control_gap = 0.14
     width_min = float(lute.unit) * 0.15
     width_max = float(lute.unit) * 1.0
     width_min = min(width_min, width)
@@ -433,6 +430,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     def _format_lute_label() -> str:
         return f"Lute | {type(lute).__name__}"
+
+    preset_path = PROJECT_ROOT / "output" / "ribbon_bowl_presets.json"
+
+    def _load_presets() -> dict[str, dict]:
+        if not preset_path.exists():
+            return {}
+        try:
+            with preset_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return {str(k): v for k, v in data.items()} if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_presets(data: dict[str, dict]) -> None:
+        preset_path.parent.mkdir(parents=True, exist_ok=True)
+        with preset_path.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True)
 
     def _rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
         axis = np.asarray(axis, dtype=float)
@@ -506,45 +520,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     top_z_max = 0.10 * float(lute.unit)
     bottom_z_min = -0.50 * float(lute.unit)
     bottom_z_max = 0.50 * float(lute.unit)
-
-    def _add_control(
-        row_idx: int,
-        valmin: float,
-        valmax: float,
-        valinit: float,
-    ) -> tuple[Slider, Button, any]:
-        value_y = base_value_y - row_idx * control_gap
-        slider_y = base_slider_y - row_idx * control_gap
-        slider_ax = panel_ax.inset_axes([panel_x, slider_y, slider_w, slider_h])
-        value_text = panel_ax.text(
-            panel_x,
-            value_y,
-            "",
-            transform=panel_ax.transAxes,
-            ha="left",
-            va="top",
-        )
-        slider = Slider(
-            slider_ax,
-            "",
-            valmin=valmin,
-            valmax=valmax,
-            valinit=valinit,
-            valfmt="%.2f",
-        )
-        slider.label.set_visible(False)
-        slider.valtext.set_visible(False)
-        reset_ax = panel_ax.inset_axes([panel_x + slider_w + gap_w, slider_y, reset_w, reset_h])
-        reset_button = Button(reset_ax, "↺")
-        separator_y = slider_y - 0.03
-        panel_ax.plot(
-            [panel_x, panel_x + panel_w],
-            [separator_y, separator_y],
-            transform=panel_ax.transAxes,
-            color="0.8",
-            lw=1.0,
-        )
-        return slider, reset_button, value_text
 
     def _transformed_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         pts = np.column_stack([X_base.ravel(), Y_base.ravel(), Z_base.ravel()])
@@ -657,15 +632,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
         fig.canvas.draw_idle()
 
-    width_value_text = width_ax.text(
-        0.02,
-        0.9,
+    width_layout = VBox(0.02, 0.12, 0.96, 0.80, gap=0.04)
+    width_label_rect = width_layout.next_frac(0.35)
+    width_controls_rect = width_layout.next_frac(0.65)
+    width_value_text = add_text(
+        width_ax,
+        width_label_rect[0],
+        width_label_rect[1] + width_label_rect[3],
         "",
-        transform=width_ax.transAxes,
         ha="left",
         va="top",
     )
-    width_slider_ax = width_ax.inset_axes([0.02, 0.2, 0.74, 0.55])
+    width_row = HBox(*width_controls_rect, gap=0.015)
+    width_slider_rect = width_row.next_frac(0.68)
+    width_minus_rect = width_row.next_frac(0.08)
+    width_plus_rect = width_row.next_frac(0.08)
+    width_reset_rect = width_row.next_frac(0.08)
+    width_slider_ax = width_ax.inset_axes(width_slider_rect)
     width_slider = Slider(
         width_slider_ax,
         "",
@@ -676,75 +659,114 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     width_slider.label.set_visible(False)
     width_slider.valtext.set_visible(False)
-    width_button_h = 0.55
-    width_button_y = 0.2
-    width_button_w = 0.05
-    width_minus_ax = width_ax.inset_axes([0.78, width_button_y, width_button_w, width_button_h])
-    width_plus_ax = width_ax.inset_axes([0.84, width_button_y, width_button_w, width_button_h])
-    width_reset_ax = width_ax.inset_axes([0.90, width_button_y, 0.07, width_button_h])
-    width_minus = Button(width_minus_ax, "-")
-    width_plus = Button(width_plus_ax, "+")
-    width_reset = Button(width_reset_ax, "↺")
+    width_minus = add_button(width_ax, width_minus_rect, "-")
+    width_plus = add_button(width_ax, width_plus_rect, "+")
+    width_reset = add_button(width_ax, width_reset_rect, "↺")
 
-    lute_row = 0
-    lute_value_text = panel_ax.text(
-        panel_x,
-        base_value_y - lute_row * control_gap,
+    panel_layout = VBox(0.06, 0.06, 0.88, 0.88, gap=0.04)
+    panel_rows = 6
+    row_h = (panel_layout.h - panel_layout.gap * (panel_rows - 1)) / panel_rows
+
+    def _row_separator(rect) -> None:
+        y = rect[1] - 0.01
+        panel_ax.plot(
+            [rect[0], rect[0] + rect[2]],
+            [y, y],
+            transform=panel_ax.transAxes,
+            color="0.8",
+            lw=1.0,
+        )
+
+    def _add_slider_row(valmin: float, valmax: float, valinit: float) -> tuple[Slider, object, any]:
+        row_rect = panel_layout.next(row_h)
+        title_rect, control_rect = split_vertical(row_rect, 0.38)
+        value_text = add_text(
+            panel_ax,
+            title_rect[0],
+            title_rect[1] + title_rect[3],
+            "",
+            ha="left",
+            va="top",
+        )
+        control_row = HBox(*control_rect, gap=0.02)
+        slider_rect = control_row.next_frac(0.74)
+        reset_rect = control_row.next_frac(0.20)
+        slider_ax = panel_ax.inset_axes(slider_rect)
+        slider = Slider(
+            slider_ax,
+            "",
+            valmin=valmin,
+            valmax=valmax,
+            valinit=valinit,
+            valfmt="%.2f",
+        )
+        slider.label.set_visible(False)
+        slider.valtext.set_visible(False)
+        reset_button = add_button(panel_ax, reset_rect, "↺")
+        _row_separator(row_rect)
+        return slider, reset_button, value_text
+
+    lute_row_rect = panel_layout.next(row_h)
+    lute_title_rect, lute_control_rect = split_vertical(lute_row_rect, 0.38)
+    lute_value_text = add_text(
+        panel_ax,
+        lute_title_rect[0],
+        lute_title_rect[1] + lute_title_rect[3],
         "",
-        transform=panel_ax.transAxes,
         ha="left",
         va="top",
     )
-    lute_button_y = base_slider_y - lute_row * control_gap
-    lute_button_w = 0.08
-    lute_button_gap = 0.02
-    lute_prev_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, lute_button_y, lute_button_w, reset_h])
-    lute_next_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + 0.01 + lute_button_w + lute_button_gap, lute_button_y, lute_button_w, reset_h]
-    )
-    lute_prev = Button(lute_prev_ax, "◀")
-    lute_next = Button(lute_next_ax, "▶")
-    lute_sep_y = lute_button_y - 0.03
-    panel_ax.plot(
-        [panel_x, panel_x + panel_w],
-        [lute_sep_y, lute_sep_y],
-        transform=panel_ax.transAxes,
-        color="0.8",
-        lw=1.0,
+    lute_controls = HBox(*lute_control_rect, gap=0.02)
+    lute_controls.next_frac(0.56)
+    lute_prev = add_button(panel_ax, lute_controls.next_frac(0.18), "◀")
+    lute_next = add_button(panel_ax, lute_controls.next_frac(0.18), "▶")
+    _row_separator(lute_row_rect)
+
+    top_slider, top_reset, top_value_text = _add_slider_row(top_s_min, top_s_max, top_s)
+    bottom_slider, bottom_reset, bottom_value_text = _add_slider_row(bottom_s_min, bottom_s_max, bottom_s)
+    top_z_slider, top_z_reset, top_z_value_text = _add_slider_row(top_z_min, top_z_max, top_z_offset)
+    bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_slider_row(
+        bottom_z_min, bottom_z_max, bottom_z_offset
     )
 
-    top_slider, top_reset, top_value_text = _add_control(1, top_s_min, top_s_max, top_s)
-    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, bottom_s_min, bottom_s_max, bottom_s)
-    top_z_slider, top_z_reset, top_z_value_text = _add_control(3, top_z_min, top_z_max, top_z_offset)
-    bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_control(
-        4, bottom_z_min, bottom_z_max, bottom_z_offset
-    )
-    ribs_value_text = panel_ax.text(
-        panel_x,
-        base_value_y - 5 * control_gap,
+    ribs_row_rect = panel_layout.next(row_h)
+    ribs_title_rect, ribs_control_rect = split_vertical(ribs_row_rect, 0.38)
+    ribs_value_text = add_text(
+        panel_ax,
+        ribs_title_rect[0],
+        ribs_title_rect[1] + ribs_title_rect[3],
         "",
-        transform=panel_ax.transAxes,
         ha="left",
         va="top",
     )
-    ribs_reset_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + gap_w, base_slider_y - 5 * control_gap, reset_w, reset_h]
+    ribs_controls = HBox(*ribs_control_rect, gap=0.02)
+    ribs_controls.next_frac(0.42)
+    rib_minus = add_button(panel_ax, ribs_controls.next_frac(0.16), "-")
+    rib_plus = add_button(panel_ax, ribs_controls.next_frac(0.16), "+")
+    ribs_reset = add_button(panel_ax, ribs_controls.next_frac(0.20), "↺")
+    _row_separator(ribs_row_rect)
+
+    preset_layout = VBox(0.02, 0.06, 0.96, 0.90, gap=0.04)
+    preset_title_rect = preset_layout.next_frac(0.18)
+    preset_row_rect = preset_layout.next_frac(0.30)
+    preset_list_rect = preset_layout.next_frac(0.38)
+    preset_value_text = add_text(
+        preset_ax,
+        preset_title_rect[0],
+        preset_title_rect[1] + preset_title_rect[3],
+        "",
+        ha="left",
+        va="top",
     )
-    ribs_reset = Button(ribs_reset_ax, "↺")
-    rib_button_w = 0.05
-    rib_button_gap = 0.02
-    rib_button_y = base_slider_y - 5 * control_gap
-    rib_minus_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, rib_button_y, rib_button_w, reset_h])
-    rib_plus_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + 0.01 + rib_button_w + rib_button_gap, rib_button_y, rib_button_w, reset_h]
-    )
-    rib_minus = Button(rib_minus_ax, "-")
-    rib_plus = Button(rib_plus_ax, "+")
-    separator_y = base_slider_y - 5 * control_gap - 0.03
-    panel_ax.plot(
-        [panel_x, panel_x + panel_w],
-        [separator_y, separator_y],
-        transform=panel_ax.transAxes,
+    preset_row = HBox(*preset_row_rect, gap=0.02)
+    preset_box = add_textbox(preset_ax, preset_row.next_frac(0.62), initial=_default_preset_name())
+    preset_save = add_button(preset_ax, preset_row.next_frac(0.10), "Save")
+    preset_load = add_button(preset_ax, preset_row.next_frac(0.10), "Load")
+    preset_drop_rect = preset_row.next_frac(0.06)
+    preset_ax.plot(
+        [preset_row_rect[0], preset_row_rect[0] + preset_row_rect[2]],
+        [preset_row_rect[1] - 0.02, preset_row_rect[1] - 0.02],
+        transform=preset_ax.transAxes,
         color="0.8",
         lw=1.0,
     )
@@ -776,6 +798,94 @@ def main(argv: Sequence[str] | None = None) -> int:
         slider.valmin = vmin
         slider.valmax = vmax
         slider.ax.set_xlim(vmin, vmax)
+
+    def _on_preset_select(label: str) -> None:
+        if label == "(none)":
+            return
+        preset_box.set_val(label)
+        preset_value_text.set_text(f"Preset | {label}")
+        fig.canvas.draw_idle()
+
+    preset_dropdown = Dropdown(
+        fig,
+        preset_ax,
+        button_rect=preset_drop_rect,
+        list_rect=preset_list_rect,
+        items=[],
+        on_select=_on_preset_select,
+        label="▼",
+        font_size=12.0,
+        padding=0.01,
+        facecolor="0.98",
+    )
+
+    def _refresh_preset_list() -> None:
+        names = sorted(_load_presets().keys())
+        preset_dropdown.set_items(names if names else ["(none)"])
+
+    _refresh_preset_list()
+
+    def _current_preset_name() -> str:
+        name = preset_box.text.strip()
+        if not name:
+            name = _default_preset_name()
+            preset_box.set_val(name)
+        return name
+
+    def _set_lute_by_path(path: str) -> None:
+        nonlocal lute_choices
+        for idx, (candidate, _) in enumerate(lute_choices):
+            if candidate == path:
+                _set_lute_by_index(idx)
+                return
+        try:
+            cls = _resolve_class(path)
+        except Exception:
+            return
+        lute_choices.insert(0, (path, cls))
+        _set_lute_by_index(0)
+
+    def _save_preset() -> None:
+        name = _current_preset_name()
+        data = _load_presets()
+        data[name] = {
+            "lute": _class_path(type(lute)),
+            "width_u": float(width) / float(lute.unit),
+            "top_s": float(top_s),
+            "bottom_s": float(bottom_s),
+            "top_z_u": float(top_z_offset) / float(lute.unit),
+            "bottom_z_u": float(bottom_z_offset) / float(lute.unit),
+            "ribs": int(rib_count),
+        }
+        _save_presets(data)
+        preset_value_text.set_text(f"Preset | {name}")
+        _refresh_preset_list()
+        fig.canvas.draw_idle()
+
+    def _load_preset() -> None:
+        name = _current_preset_name()
+        data = _load_presets()
+        preset = data.get(name)
+        if not isinstance(preset, dict):
+            return
+        preset_lute = preset.get("lute")
+        if isinstance(preset_lute, str):
+            _set_lute_by_path(preset_lute)
+        width_u = preset.get("width_u")
+        if width_u is not None:
+            width_slider.set_val(float(width_u) * float(lute.unit))
+        if "top_s" in preset:
+            top_slider.set_val(float(preset["top_s"]))
+        if "bottom_s" in preset:
+            bottom_slider.set_val(float(preset["bottom_s"]))
+        if "top_z_u" in preset:
+            top_z_slider.set_val(float(preset["top_z_u"]) * float(lute.unit))
+        if "bottom_z_u" in preset:
+            bottom_z_slider.set_val(float(preset["bottom_z_u"]) * float(lute.unit))
+        if "ribs" in preset:
+            _update_rib_count(str(int(preset["ribs"])))
+        preset_value_text.set_text(f"Preset | {name}")
+        fig.canvas.draw_idle()
 
     def _set_lute_by_index(idx: int) -> None:
         nonlocal lute_index
@@ -839,6 +949,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     lute_prev.on_clicked(lambda _event: _select_prev_lute())
     lute_next.on_clicked(lambda _event: _select_next_lute())
+    preset_save.on_clicked(lambda _event: _save_preset())
+    preset_load.on_clicked(lambda _event: _load_preset())
 
     width_value_text.set_text(_format_width(width))
     top_value_text.set_text(_format_s("Top s", top_s))
@@ -847,6 +959,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
     ribs_value_text.set_text(_format_rib_count(rib_count))
     lute_value_text.set_text(_format_lute_label())
+    preset_value_text.set_text(f"Preset | {preset_box.text}")
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
     width_minus.on_clicked(lambda _event: _nudge_width(-width_step))
