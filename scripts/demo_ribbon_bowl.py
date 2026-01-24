@@ -362,7 +362,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if vals.size:
             store.append(vals)
 
-    def _refresh_axes(x_grid, y_grid, z_grid, edge_curves: list[np.ndarray]) -> None:
+    def _refresh_axes(
+        x_grid,
+        y_grid,
+        z_grid,
+        edge_curves: list[np.ndarray],
+        *,
+        preserve_view: bool = True,
+    ) -> None:
         xs: list[np.ndarray] = []
         ys: list[np.ndarray] = []
         zs: list[np.ndarray] = []
@@ -376,9 +383,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _append_bounds(zs, curve[:, 2])
         if not xs or not ys or not zs:
             return
+        if preserve_view:
+            return
         set_axes_equal_3d(ax, xs=np.concatenate(xs), ys=np.concatenate(ys), zs=np.concatenate(zs))
 
-    _refresh_axes(X, Y, Z, ribs)
+    _refresh_axes(X, Y, Z, ribs, preserve_view=False)
     ax.set_xlabel("X (along spine)")
     ax.set_ylabel("Y (across soundboard)")
     ax.set_zlabel("Z (depth)")
@@ -593,7 +602,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if new_ribs:
             new_ribs = [_clip_curve_by_neck_plane(_apply_z_transform(curve)) for curve in new_ribs]
         _set_edges(new_ribs)
-        _refresh_axes(X, Y, Z, new_ribs)
+        _refresh_axes(X, Y, Z, new_ribs, preserve_view=True)
         if args.show_neck_plane and neck_plane_x is not None:
             _plot_neck_plane(neck_plane_x)
 
