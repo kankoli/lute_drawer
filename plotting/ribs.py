@@ -27,6 +27,7 @@ GRID_MM = 50.0
 MIN_PANEL_IN = 2.0
 LABEL_CLEARANCE_MM = 2.0
 LABEL_OFFSET_FRAC = 0.15
+PRINT_SCALE = 1.0858863476947622  # printer calibration: scale so a 50mm grid prints at 50mm
 
 
 def plot_rib_surfaces(
@@ -309,6 +310,25 @@ def _compute_frame_from_bbox(
     return (max_w, max_h)
 
 
+def _scale_panel_projection(proj: PanelProjection, scale: float) -> PanelProjection:
+    plane_outline = proj.plane_outline_2d * scale
+    plane_corners = proj.plane_corners_2d * scale
+    bbox = (
+        proj.bbox_2d[0] * scale,
+        proj.bbox_2d[1] * scale,
+        proj.bbox_2d[2] * scale,
+        proj.bbox_2d[3] * scale,
+    )
+    return PanelProjection(
+        plane=proj.plane,
+        outline_3d=proj.outline_3d,
+        projected_3d=proj.projected_3d,
+        plane_outline_2d=plane_outline,
+        plane_corners_2d=plane_corners,
+        bbox_2d=bbox,
+    )
+
+
 def _draw_projection_panel(
     output_path: Path,
     *,
@@ -320,6 +340,7 @@ def _draw_projection_panel(
     dpi: int,
     markers: Sequence[ProjectionMarker] | None = None,
     grid_mm: float = GRID_MM,
+    grid_label_mm: float | None = None,
 ) -> None:
     width_in = frame_size_mm[0] / MM_PER_INCH
     height_in = frame_size_mm[1] / MM_PER_INCH
@@ -425,7 +446,8 @@ def _draw_projection_panel(
                 )
 
     if title:
-        ax.set_title(f"{title} (grid {grid_mm:.0f}x{grid_mm:.0f}mm)", fontsize=11, pad=6)
+        grid_label = grid_mm if grid_label_mm is None else grid_label_mm
+        ax.set_title(f"{title} (grid {grid_label:.0f}x{grid_label:.0f}mm)", fontsize=11, pad=6)
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=dpi)
@@ -442,10 +464,18 @@ def save_outline_projection_png(
     pad_mm: float = 20.0,
     markers: Sequence[ProjectionMarker] | None = None,
 ) -> Path:
+    scale = PRINT_SCALE
+    scaled_unit_scale = unit_scale * scale
+    scaled_pad_mm = pad_mm * scale
+    scaled_min_panel_in = MIN_PANEL_IN * scale
+    scaled_frame_override = None
+    if frame_size_mm is not None:
+        scaled_frame_override = (frame_size_mm[0] * scale, frame_size_mm[1] * scale)
+
     coords = np.asarray(outline_points, dtype=float)
     if coords.shape[1] > 2:
         coords = coords[:, :2]
-    coords_mm = coords * float(unit_scale)
+    coords_mm = coords * float(scaled_unit_scale)
 
     x_min = float(coords_mm[:, 0].min())
     x_max = float(coords_mm[:, 0].max())
@@ -453,29 +483,29 @@ def save_outline_projection_png(
     y_max = float(coords_mm[:, 1].max())
     if markers:
         for marker in markers:
-            x_min = min(x_min, marker.point[0] * unit_scale)
-            x_max = max(x_max, marker.point[0] * unit_scale)
-            y_min = min(y_min, marker.point[1] * unit_scale)
-            y_max = max(y_max, marker.point[1] * unit_scale)
+            x_min = min(x_min, marker.point[0] * scaled_unit_scale)
+            x_max = max(x_max, marker.point[0] * scaled_unit_scale)
+            y_min = min(y_min, marker.point[1] * scaled_unit_scale)
+            y_max = max(y_max, marker.point[1] * scaled_unit_scale)
 
     bbox = (x_min, x_max, y_min, y_max)
     frame_size_mm = _compute_frame_from_bbox(
         bbox,
-        pad_mm=pad_mm,
-        min_panel_in=MIN_PANEL_IN,
+        pad_mm=scaled_pad_mm,
+        min_panel_in=scaled_min_panel_in,
         mm_per_inch=MM_PER_INCH,
-        override=frame_size_mm,
+        override=scaled_frame_override,
     )
-    shift_x = pad_mm - x_min
-    shift_y = frame_size_mm[1] - pad_mm - y_max
+    shift_x = scaled_pad_mm - x_min
+    shift_y = frame_size_mm[1] - scaled_pad_mm - y_max
 
     coords_mm = coords_mm + np.array([shift_x, shift_y])
     shifted_markers: list[ProjectionMarker] = []
     if markers:
         for marker in markers:
             shifted = (
-                marker.point[0] * unit_scale + shift_x,
-                marker.point[1] * unit_scale + shift_y,
+                marker.point[0] * scaled_unit_scale + shift_x,
+                marker.point[1] * scaled_unit_scale + shift_y,
             )
             shifted_markers.append(
                 ProjectionMarker(
@@ -495,6 +525,8 @@ def save_outline_projection_png(
         title=title,
         dpi=dpi,
         markers=shifted_markers,
+        grid_mm=GRID_MM * scale,
+        grid_label_mm=GRID_MM,
     )
     return Path(output_path)
 
@@ -517,6 +549,13 @@ def save_plane_projection_png(
     outline in `outline_pair`, which is the lower-index rib outline."""
 
     path = Path(output_path)
+    scale = PRINT_SCALE
+    scaled_unit_scale = unit_scale * scale
+    scaled_pad_mm = pad_mm * scale
+    scaled_min_panel_in = MIN_PANEL_IN * scale
+    scaled_frame_override = None
+    if frame_size_mm is not None:
+        scaled_frame_override = (frame_size_mm[0] * scale, frame_size_mm[1] * scale)
 
     def _side_path(base: Path, side: str) -> Path:
         stem = base.stem
@@ -534,11 +573,21 @@ def save_plane_projection_png(
     ]
 
     if panel_projections is None:
-        panel_projections = build_panel_projections(outline_pair, planes, unit_scale)
+        panel_projections = build_panel_projections(outline_pair, planes, scaled_unit_scale)
+    else:
+        panel_projections = [
+            _scale_panel_projection(proj, scale) if proj is not None else None for proj in panel_projections
+        ]
 
     paths = (_side_path(path, "left"), _side_path(path, "right"))
 
-    frame_size_mm = compute_panel_frame(panel_projections, pad_mm, MIN_PANEL_IN, MM_PER_INCH, frame_size_mm)
+    frame_size_mm = compute_panel_frame(
+        panel_projections,
+        scaled_pad_mm,
+        scaled_min_panel_in,
+        MM_PER_INCH,
+        scaled_frame_override,
+    )
 
     # Use a common translation so left/right outlines retain their relative positioning.
     global_x_min = float("inf")
@@ -554,8 +603,8 @@ def save_plane_projection_png(
         global_y_min = min(global_y_min, y_min)
         global_y_max = max(global_y_max, y_max)
 
-    shift_x = pad_mm - global_x_min
-    shift_y = frame_size_mm[1] - pad_mm - global_y_max
+    shift_x = scaled_pad_mm - global_x_min
+    shift_y = frame_size_mm[1] - scaled_pad_mm - global_y_max
 
     for proj, side_path, panel_label in zip(panel_projections, paths, panel_labels, strict=False):
         if proj is None:
@@ -571,6 +620,8 @@ def save_plane_projection_png(
             label=panel_label,
             title=title,
             dpi=dpi,
+            grid_mm=GRID_MM * scale,
+            grid_label_mm=GRID_MM,
         )
 
     return paths

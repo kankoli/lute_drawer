@@ -264,22 +264,48 @@ def main(argv: Sequence[str] | None = None) -> int:
             curves.append(apply_reflections_to_points(outer_source, rib.mirrors))
         return curves
 
-    def _soundboard_outline_points(samples_per_arc: int, *, half: bool = False) -> np.ndarray:
-        arcs = list(getattr(lute, "final_arcs", []))
+    def _soundboard_outline_points(
+        lute_obj,
+        surface_obj,
+        samples_per_arc: int,
+        *,
+        half: bool = False,
+    ) -> np.ndarray:
+        arcs = list(getattr(lute_obj, "final_arcs", []))
         if not half:
-            arcs = arcs + list(getattr(lute, "final_reflected_arcs", []))
+            arcs = arcs + list(getattr(lute_obj, "final_reflected_arcs", []))
         outlines: list[np.ndarray] = []
         for arc in arcs:
             pts = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
             if pts.size == 0:
                 continue
-            pts = normalize_outline_points(lute, pts)
+            pts = normalize_outline_points(lute_obj, pts)
             pts3 = np.column_stack([pts[:, 0], pts[:, 1], np.zeros(pts.shape[0], dtype=float)])
-            pts3 = surface.to_oriented(pts3)
+            pts3 = surface_obj.to_oriented(pts3)
             outlines.append(pts3[:, :2])
         if not outlines:
             return np.empty((0, 2), dtype=float)
         return np.vstack(outlines)
+
+    def _outline_extent_mm(lute_obj, samples_per_arc: int) -> tuple[float, float] | None:
+        try:
+            surface_obj = RibbonSurface.from_outline(lute_obj, samples_per_arc=samples_per_arc)
+        except Exception:
+            return None
+        outline = _soundboard_outline_points(lute_obj, surface_obj, samples_per_arc, half=True)
+        if outline.size == 0:
+            return None
+        unit_scale_local = (
+            float(lute_obj.unit_in_mm()) / float(lute_obj.unit)
+            if hasattr(lute_obj, "unit_in_mm") and hasattr(lute_obj, "unit")
+            else 1.0
+        )
+        outline_mm = outline * unit_scale_local
+        width = float(outline_mm[:, 0].max() - outline_mm[:, 0].min())
+        height = float(outline_mm[:, 1].max() - outline_mm[:, 1].min())
+        return (width, height)
+
+    fixed_frame_mm: tuple[float, float] | None = None
 
     def _set_edges(edge_curves: list[np.ndarray]) -> None:
         nonlocal ribs
@@ -600,9 +626,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             _plot_neck_plane(neck_plane_x)
 
     def _export_outline_png() -> None:
-        outline_points = _soundboard_outline_points(args.arc_samples, half=True)
+        nonlocal fixed_frame_mm
+        outline_points = _soundboard_outline_points(lute, surface, args.arc_samples, half=True)
         if outline_points.size == 0:
             return
+
+        pad_mm = 20.0
+        if fixed_frame_mm is None:
+            max_w = 0.0
+            max_h = 0.0
+            for _, lute_cls in lute_choices:
+                try:
+                    lute_obj = lute_cls()
+                except Exception:
+                    continue
+                extent = _outline_extent_mm(lute_obj, args.arc_samples)
+                if extent is None:
+                    continue
+                max_w = max(max_w, extent[0])
+                max_h = max(max_h, extent[1])
+            if max_w <= 0.0 or max_h <= 0.0:
+                outline_mm = outline_points * unit_scale
+                max_w = float(outline_mm[:, 0].max() - outline_mm[:, 0].min())
+                max_h = float(outline_mm[:, 1].max() - outline_mm[:, 1].min())
+            fixed_frame_mm = (max_w + 2 * pad_mm, max_h + 2 * pad_mm)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         lute_name = type(lute).__name__
@@ -614,6 +661,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             outline_points,
             unit_scale=unit_scale,
             title=f"{lute_name} outline",
+            frame_size_mm=fixed_frame_mm,
+            pad_mm=pad_mm,
         )
         export_value_text.set_text(f"Plane PNG | {output_path.name}")
         fig.canvas.draw_idle()
