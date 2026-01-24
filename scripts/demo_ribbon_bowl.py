@@ -39,6 +39,24 @@ def _resolve_class(path: str):
         raise ValueError(f"Module '{module_name}' has no attribute '{attr}'") from exc
 
 
+def _class_path(cls: type) -> str:
+    return f"{cls.__module__}.{cls.__name__}"
+
+
+def _available_lutes() -> list[tuple[str, type]]:
+    try:
+        import lute_soundboard as ls
+    except Exception:
+        return []
+    names = [n for n in getattr(ls, "__all__", []) if n not in ("LuteSoundboard", "SoundboardMeasurement")]
+    choices: list[tuple[str, type]] = []
+    for name in names:
+        cls = getattr(ls, name, None)
+        if isinstance(cls, type):
+            choices.append((_class_path(cls), cls))
+    return sorted(choices, key=lambda item: item[0])
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lute", default=None, help=f"Fully qualified lute class (default: {DEFAULT_LUTE})")
@@ -86,8 +104,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
-def _plot_soundboard_outline(ax, lute, samples_per_arc: int, surface) -> None:
+def _plot_soundboard_outline(ax, lute, samples_per_arc: int, surface) -> list:
     arcs = list(getattr(lute, "final_arcs", [])) + list(getattr(lute, "final_reflected_arcs", []))
+    lines = []
     for idx, arc in enumerate(arcs):
         pts = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
         if pts.size == 0:
@@ -97,7 +116,9 @@ def _plot_soundboard_outline(ax, lute, samples_per_arc: int, surface) -> None:
         pts3 = surface.to_oriented(pts3)
         zs = pts3[:, 2]
         label = "soundboard" if idx == 0 else None
-        ax.plot(pts3[:, 0], pts3[:, 1], zs, color="0.3", alpha=0.4, label=label)
+        (line,) = ax.plot(pts3[:, 0], pts3[:, 1], zs, color="0.3", alpha=0.4, label=label)
+        lines.append(line)
+    return lines
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -105,6 +126,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     lute_path = args.lute or DEFAULT_LUTE
     lute_cls = lute_path if isinstance(lute_path, type) else _resolve_class(lute_path)
     lute = lute_cls()
+    lute_choices = _available_lutes()
+    selected_path = lute_path if isinstance(lute_path, str) else _class_path(lute_cls)
+    lute_index = None
+    for idx, (path, cls) in enumerate(lute_choices):
+        if path == selected_path or cls is lute_cls:
+            lute_index = idx
+            break
+    if lute_index is None:
+        lute_choices.insert(0, (_class_path(lute_cls), lute_cls))
+        lute_index = 0
     width = float(args.width) if args.width is not None else float(lute.unit) / 4.0
 
     surface = RibbonSurface.from_outline(lute, samples_per_arc=args.arc_samples)
@@ -151,7 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_ax.set_facecolor("0.96")
     X, Y, Z = X_base, Y_base, Z_base
     surface_plot = ax.plot_surface(X, Y, Z, color="tab:blue", alpha=0.35, linewidth=0, antialiased=True)
-    _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
+    soundboard_lines = _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
 
     ribs: list[np.ndarray] = []
     edge_lines: list = []
@@ -390,6 +421,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         unit_val = float(val) / float(lute.unit)
         mm_val = float(val) * unit_scale
         return f"Rib Width | {unit_val:.3f} u / {mm_val:.3f} mm"
+
+    def _format_lute_label() -> str:
+        return f"Lute | {type(lute).__name__}"
 
     def _rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
         axis = np.asarray(axis, dtype=float)
@@ -643,34 +677,61 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_plus = Button(width_plus_ax, "+")
     width_reset = Button(width_reset_ax, "↺")
 
-    top_slider, top_reset, top_value_text = _add_control(0, top_s_min, top_s_max, top_s)
-    bottom_slider, bottom_reset, bottom_value_text = _add_control(1, bottom_s_min, bottom_s_max, bottom_s)
-    top_z_slider, top_z_reset, top_z_value_text = _add_control(2, top_z_min, top_z_max, top_z_offset)
+    lute_row = 0
+    lute_value_text = panel_ax.text(
+        panel_x,
+        base_value_y - lute_row * control_gap,
+        "",
+        transform=panel_ax.transAxes,
+        ha="left",
+        va="top",
+    )
+    lute_button_y = base_slider_y - lute_row * control_gap
+    lute_button_w = 0.08
+    lute_button_gap = 0.02
+    lute_prev_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, lute_button_y, lute_button_w, reset_h])
+    lute_next_ax = panel_ax.inset_axes(
+        [panel_x + slider_w + 0.01 + lute_button_w + lute_button_gap, lute_button_y, lute_button_w, reset_h]
+    )
+    lute_prev = Button(lute_prev_ax, "◀")
+    lute_next = Button(lute_next_ax, "▶")
+    lute_sep_y = lute_button_y - 0.03
+    panel_ax.plot(
+        [panel_x, panel_x + panel_w],
+        [lute_sep_y, lute_sep_y],
+        transform=panel_ax.transAxes,
+        color="0.8",
+        lw=1.0,
+    )
+
+    top_slider, top_reset, top_value_text = _add_control(1, top_s_min, top_s_max, top_s)
+    bottom_slider, bottom_reset, bottom_value_text = _add_control(2, bottom_s_min, bottom_s_max, bottom_s)
+    top_z_slider, top_z_reset, top_z_value_text = _add_control(3, top_z_min, top_z_max, top_z_offset)
     bottom_z_slider, bottom_z_reset, bottom_z_value_text = _add_control(
-        3, bottom_z_min, bottom_z_max, bottom_z_offset
+        4, bottom_z_min, bottom_z_max, bottom_z_offset
     )
     ribs_value_text = panel_ax.text(
         panel_x,
-        base_value_y - 4 * control_gap,
+        base_value_y - 5 * control_gap,
         "",
         transform=panel_ax.transAxes,
         ha="left",
         va="top",
     )
     ribs_reset_ax = panel_ax.inset_axes(
-        [panel_x + slider_w + gap_w, base_slider_y - 4 * control_gap, reset_w, reset_h]
+        [panel_x + slider_w + gap_w, base_slider_y - 5 * control_gap, reset_w, reset_h]
     )
     ribs_reset = Button(ribs_reset_ax, "↺")
     rib_button_w = 0.05
     rib_button_gap = 0.02
-    rib_button_y = base_slider_y - 4 * control_gap
+    rib_button_y = base_slider_y - 5 * control_gap
     rib_minus_ax = panel_ax.inset_axes([panel_x + slider_w + 0.01, rib_button_y, rib_button_w, reset_h])
     rib_plus_ax = panel_ax.inset_axes(
         [panel_x + slider_w + 0.01 + rib_button_w + rib_button_gap, rib_button_y, rib_button_w, reset_h]
     )
     rib_minus = Button(rib_minus_ax, "-")
     rib_plus = Button(rib_plus_ax, "+")
-    separator_y = base_slider_y - 4 * control_gap - 0.03
+    separator_y = base_slider_y - 5 * control_gap - 0.03
     panel_ax.plot(
         [panel_x, panel_x + panel_w],
         [separator_y, separator_y],
@@ -702,12 +763,81 @@ def main(argv: Sequence[str] | None = None) -> int:
     def _nudge_rib_count(step: int) -> None:
         _update_rib_count(str(rib_count + step))
 
+    def _update_slider_bounds(slider: Slider, vmin: float, vmax: float) -> None:
+        slider.valmin = vmin
+        slider.valmax = vmax
+        slider.ax.set_xlim(vmin, vmax)
+
+    def _set_lute_by_index(idx: int) -> None:
+        nonlocal lute_index
+        nonlocal lute
+        nonlocal surface
+        nonlocal unit_scale
+        nonlocal width_min
+        nonlocal width_max
+        nonlocal width_step
+        nonlocal top_z_min
+        nonlocal top_z_max
+        nonlocal bottom_z_min
+        nonlocal bottom_z_max
+        nonlocal neck_plane_x
+        nonlocal soundboard_lines
+        nonlocal width
+        nonlocal top_z_offset
+        nonlocal bottom_z_offset
+        if not lute_choices:
+            return
+        lute_index = idx % len(lute_choices)
+        _, lute_cls_sel = lute_choices[lute_index]
+        lute = lute_cls_sel()
+        surface = RibbonSurface.from_outline(lute, samples_per_arc=args.arc_samples)
+        unit_scale = (
+            float(lute.unit_in_mm()) / float(lute.unit)
+            if hasattr(lute, "unit_in_mm") and hasattr(lute, "unit")
+            else 1.0
+        )
+        for line in soundboard_lines:
+            line.remove()
+        soundboard_lines = _plot_soundboard_outline(ax, lute, args.arc_samples, surface)
+        neck_plane_x = _neck_plane_x()
+        width_min = float(lute.unit) * 0.15
+        width_max = float(lute.unit) * 1.0
+        width_step = 0.001 * float(lute.unit)
+        top_z_min = -0.30 * float(lute.unit)
+        top_z_max = 0.10 * float(lute.unit)
+        bottom_z_min = -0.50 * float(lute.unit)
+        bottom_z_max = 0.50 * float(lute.unit)
+        _update_slider_bounds(width_slider, width_min, width_max)
+        _update_slider_bounds(top_z_slider, top_z_min, top_z_max)
+        _update_slider_bounds(bottom_z_slider, bottom_z_min, bottom_z_max)
+
+        width = max(width_min, min(width_max, float(width)))
+        top_z_offset = max(top_z_min, min(top_z_max, float(top_z_offset)))
+        bottom_z_offset = max(bottom_z_min, min(bottom_z_max, float(bottom_z_offset)))
+
+        width_slider.set_val(width)
+        top_z_slider.set_val(top_z_offset)
+        bottom_z_slider.set_val(bottom_z_offset)
+        ax.set_title(type(lute).__name__)
+        lute_value_text.set_text(_format_lute_label())
+        fig.canvas.draw_idle()
+
+    def _select_prev_lute() -> None:
+        _set_lute_by_index(lute_index - 1)
+
+    def _select_next_lute() -> None:
+        _set_lute_by_index(lute_index + 1)
+
+    lute_prev.on_clicked(lambda _event: _select_prev_lute())
+    lute_next.on_clicked(lambda _event: _select_next_lute())
+
     width_value_text.set_text(_format_width(width))
     top_value_text.set_text(_format_s("Top s", top_s))
     bottom_value_text.set_text(_format_s("Bottom s", bottom_s))
     top_z_value_text.set_text(_format_offset("Top z", top_z_offset))
     bottom_z_value_text.set_text(_format_offset("Bottom z", bottom_z_offset))
     ribs_value_text.set_text(_format_rib_count(rib_count))
+    lute_value_text.set_text(_format_lute_label())
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
     width_minus.on_clicked(lambda _event: _nudge_width(-width_step))
