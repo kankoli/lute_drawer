@@ -25,6 +25,7 @@ from lute_bowl.ribbon_bowl import (
     normalize_outline_points,
     ribbon_surface_grid,
 )
+from plotting.ribs import save_outline_projection_png
 from plotting.bowl import set_axes_equal_3d
 
 DEFAULT_LUTE = "lute_soundboard.ManolLavta"
@@ -262,6 +263,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             outer_source = base_neg if rib.inner_source == "pos" else base_pos
             curves.append(apply_reflections_to_points(outer_source, rib.mirrors))
         return curves
+
+    def _soundboard_outline_points(samples_per_arc: int, *, half: bool = False) -> np.ndarray:
+        arcs = list(getattr(lute, "final_arcs", []))
+        if not half:
+            arcs = arcs + list(getattr(lute, "final_reflected_arcs", []))
+        outlines: list[np.ndarray] = []
+        for arc in arcs:
+            pts = np.asarray(arc.sample_points(samples_per_arc), dtype=float)
+            if pts.size == 0:
+                continue
+            pts = normalize_outline_points(lute, pts)
+            pts3 = np.column_stack([pts[:, 0], pts[:, 1], np.zeros(pts.shape[0], dtype=float)])
+            pts3 = surface.to_oriented(pts3)
+            outlines.append(pts3[:, :2])
+        if not outlines:
+            return np.empty((0, 2), dtype=float)
+        return np.vstack(outlines)
 
     def _set_edges(edge_curves: list[np.ndarray]) -> None:
         nonlocal ribs
@@ -581,6 +599,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.show_neck_plane and neck_plane_x is not None:
             _plot_neck_plane(neck_plane_x)
 
+    def _export_outline_png() -> None:
+        outline_points = _soundboard_outline_points(args.arc_samples, half=True)
+        if outline_points.size == 0:
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        lute_name = type(lute).__name__
+        file_name = f"{lute_name}_outline-half_{timestamp}.png"
+        output_path = PROJECT_ROOT / "output" / file_name
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        save_outline_projection_png(
+            output_path,
+            outline_points,
+            unit_scale=unit_scale,
+            title=f"{lute_name} outline",
+        )
+        export_value_text.set_text(f"Plane PNG | {output_path.name}")
+        fig.canvas.draw_idle()
+
     if args.show_neck_plane and neck_plane_x is not None:
         _update_surface_plot()
         _update_edges()
@@ -664,7 +701,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     width_reset = add_button(width_ax, width_reset_rect, "↺")
 
     panel_layout = VBox(0.06, 0.06, 0.88, 0.88, gap=0.04)
-    panel_rows = 6
+    panel_rows = 7
     row_h = (panel_layout.h - panel_layout.gap * (panel_rows - 1)) / panel_rows
 
     def _row_separator(rect) -> None:
@@ -745,6 +782,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     rib_plus = add_button(panel_ax, ribs_controls.next_frac(0.16), "+")
     ribs_reset = add_button(panel_ax, ribs_controls.next_frac(0.20), "↺")
     _row_separator(ribs_row_rect)
+
+    export_row_rect = panel_layout.next(row_h)
+    export_title_rect, export_control_rect = split_vertical(export_row_rect, 0.38)
+    export_value_text = add_text(
+        panel_ax,
+        export_title_rect[0],
+        export_title_rect[1] + export_title_rect[3],
+        "",
+        ha="left",
+        va="top",
+    )
+    export_controls = HBox(*export_control_rect, gap=0.02)
+    export_controls.next_frac(0.58)
+    export_button = add_button(panel_ax, export_controls.next_frac(0.30), "Export")
+    _row_separator(export_row_rect)
 
     preset_layout = VBox(0.02, 0.06, 0.96, 0.90, gap=0.04)
     preset_title_rect = preset_layout.next_frac(0.18)
@@ -960,6 +1012,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ribs_value_text.set_text(_format_rib_count(rib_count))
     lute_value_text.set_text(_format_lute_label())
     preset_value_text.set_text(f"Preset | {preset_box.text}")
+    export_value_text.set_text("Plane PNG | ready")
 
     width_reset.on_clicked(lambda _event: width_slider.set_val(default_width))
     width_minus.on_clicked(lambda _event: _nudge_width(-width_step))
@@ -971,6 +1024,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ribs_reset.on_clicked(lambda _event: _update_rib_count(str(default_rib_count)))
     rib_minus.on_clicked(lambda _event: _nudge_rib_count(-2))
     rib_plus.on_clicked(lambda _event: _nudge_rib_count(2))
+    export_button.on_clicked(lambda _event: _export_outline_png())
     plt.show()
     return 0
 

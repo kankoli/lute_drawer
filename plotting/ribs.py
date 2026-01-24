@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Sequence
 
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.patches import Polygon
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
@@ -18,6 +21,12 @@ from lute_bowl.rib_form_builder import (
 )
 
 from .bowl import set_axes_equal_3d
+
+MM_PER_INCH = 25.4
+GRID_MM = 50.0
+MIN_PANEL_IN = 2.0
+LABEL_CLEARANCE_MM = 2.0
+LABEL_OFFSET_FRAC = 0.15
 
 
 def plot_rib_surfaces(
@@ -192,6 +201,14 @@ class PanelProjection:
     bbox_2d: tuple[float, float, float, float]
 
 
+@dataclass
+class ProjectionMarker:
+    point: tuple[float, float]
+    label: str | None = None
+    color: str = "#aa3344"
+    size: float = 18.0
+
+
 def build_panel_projections(
     outline_pair: Sequence[np.ndarray],
     planes: Sequence[RibSidePlane],
@@ -273,6 +290,215 @@ def compute_panel_frame(
     return (max_w, max_h)
 
 
+def _compute_frame_from_bbox(
+    bbox: tuple[float, float, float, float],
+    *,
+    pad_mm: float,
+    min_panel_in: float,
+    mm_per_inch: float,
+    override: tuple[float, float] | None,
+) -> tuple[float, float]:
+    if override is not None:
+        return override
+    x_min, x_max, y_min, y_max = bbox
+    max_w = (x_max - x_min) + 2 * pad_mm
+    max_h = (y_max - y_min) + 2 * pad_mm
+    min_mm = min_panel_in * mm_per_inch
+    max_w = max(max_w, min_mm)
+    max_h = max(max_h, min_mm)
+    return (max_w, max_h)
+
+
+def _draw_projection_panel(
+    output_path: Path,
+    *,
+    outline_2d: np.ndarray,
+    plane_2d: np.ndarray | None,
+    frame_size_mm: tuple[float, float],
+    label: str | None,
+    title: str | None,
+    dpi: int,
+    markers: Sequence[ProjectionMarker] | None = None,
+    grid_mm: float = GRID_MM,
+) -> None:
+    width_in = frame_size_mm[0] / MM_PER_INCH
+    height_in = frame_size_mm[1] / MM_PER_INCH
+    fig = Figure(figsize=(width_in, height_in), dpi=dpi)
+    FigureCanvas(fig)
+    ax = fig.add_subplot(111)
+
+    if plane_2d is not None:
+        poly = Polygon(
+            plane_2d,
+            closed=True,
+            facecolor="none",
+            edgecolor="#8a6b2f",
+            linewidth=0.4,
+        )
+        ax.add_patch(poly)
+    ax.plot(outline_2d[:, 0], outline_2d[:, 1], color="#224466", lw=0.35)
+
+    xlim = (0.0, frame_size_mm[0])
+    ylim = (0.0, frame_size_mm[1])
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_aspect("equal", adjustable="box")
+
+    x_ticks = np.arange(0.0, math.ceil(xlim[1] / grid_mm) * grid_mm + grid_mm, grid_mm)
+    y_ticks = np.arange(0.0, math.ceil(ylim[1] / grid_mm) * grid_mm + grid_mm, grid_mm)
+    ax.set_xticks(x_ticks)
+    ax.set_yticks(y_ticks)
+    ax.grid(True, which="major", linestyle="--", color="0.85", linewidth=0.4)
+    ax.tick_params(labelbottom=False, labelleft=False, length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    if label:
+        span_x = xlim[1] - xlim[0]
+        span_y = ylim[1] - ylim[0]
+        outline_bb = (
+            outline_2d[:, 0].min(),
+            outline_2d[:, 0].max(),
+            outline_2d[:, 1].min(),
+            outline_2d[:, 1].max(),
+        )
+
+        def _in_outline(pt):
+            x, y = pt
+            return outline_bb[0] <= x <= outline_bb[1] and outline_bb[2] <= y <= outline_bb[3]
+
+        candidates = [
+            (xlim[0] + 0.08 * span_x, ylim[1] - 0.08 * span_y),
+            (xlim[0] + 0.08 * span_x, ylim[0] + 0.08 * span_y),
+            (xlim[0] + 0.5 * span_x, ylim[0] + 0.08 * span_y),
+        ]
+        label_pos = next((pt for pt in candidates if not _in_outline(pt)), candidates[-1])
+        ax.text(
+            label_pos[0],
+            label_pos[1],
+            label,
+            ha="left",
+            va="center",
+            fontsize=10,
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.7, "pad": 2.0},
+        )
+
+        for x0, x1 in zip(x_ticks[:-1], x_ticks[1:], strict=False):
+            for y0, y1 in zip(y_ticks[:-1], y_ticks[1:], strict=False):
+                span_x = x1 - x0
+                span_y = y1 - y0
+                if span_x < grid_mm - 1e-6 or span_y < grid_mm - 1e-6:
+                    continue
+                candidates_cell = [
+                    (x0 + LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
+                    (x0 + LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
+                    (x1 - LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
+                    (x1 - LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
+                ]
+                for pt in candidates_cell:
+                    if _min_distance_to_polyline(pt, outline_2d) >= LABEL_CLEARANCE_MM:
+                        ax.text(
+                            pt[0],
+                            pt[1],
+                            label,
+                            ha="left",
+                            va="center",
+                            fontsize=7,
+                            color="0.25",
+                            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.6, "pad": 1.5},
+                        )
+                        break
+
+    if markers:
+        for marker in markers:
+            x, y = marker.point
+            ax.scatter([x], [y], s=marker.size, color=marker.color, zorder=5)
+            if marker.label:
+                ax.text(
+                    x + 2.0,
+                    y + 2.0,
+                    marker.label,
+                    ha="left",
+                    va="bottom",
+                    fontsize=8,
+                    bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.7, "pad": 1.5},
+                )
+
+    if title:
+        ax.set_title(f"{title} (grid {grid_mm:.0f}x{grid_mm:.0f}mm)", fontsize=11, pad=6)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+
+
+def save_outline_projection_png(
+    output_path: str | Path,
+    outline_points: np.ndarray,
+    *,
+    unit_scale: float,
+    dpi: int = 300,
+    title: str | None = None,
+    frame_size_mm: tuple[float, float] | None = None,
+    pad_mm: float = 20.0,
+    markers: Sequence[ProjectionMarker] | None = None,
+) -> Path:
+    coords = np.asarray(outline_points, dtype=float)
+    if coords.shape[1] > 2:
+        coords = coords[:, :2]
+    coords_mm = coords * float(unit_scale)
+
+    x_min = float(coords_mm[:, 0].min())
+    x_max = float(coords_mm[:, 0].max())
+    y_min = float(coords_mm[:, 1].min())
+    y_max = float(coords_mm[:, 1].max())
+    if markers:
+        for marker in markers:
+            x_min = min(x_min, marker.point[0] * unit_scale)
+            x_max = max(x_max, marker.point[0] * unit_scale)
+            y_min = min(y_min, marker.point[1] * unit_scale)
+            y_max = max(y_max, marker.point[1] * unit_scale)
+
+    bbox = (x_min, x_max, y_min, y_max)
+    frame_size_mm = _compute_frame_from_bbox(
+        bbox,
+        pad_mm=pad_mm,
+        min_panel_in=MIN_PANEL_IN,
+        mm_per_inch=MM_PER_INCH,
+        override=frame_size_mm,
+    )
+    shift_x = pad_mm - x_min
+    shift_y = frame_size_mm[1] - pad_mm - y_max
+
+    coords_mm = coords_mm + np.array([shift_x, shift_y])
+    shifted_markers: list[ProjectionMarker] = []
+    if markers:
+        for marker in markers:
+            shifted = (
+                marker.point[0] * unit_scale + shift_x,
+                marker.point[1] * unit_scale + shift_y,
+            )
+            shifted_markers.append(
+                ProjectionMarker(
+                    point=shifted,
+                    label=marker.label,
+                    color=marker.color,
+                    size=marker.size,
+                )
+            )
+
+    _draw_projection_panel(
+        Path(output_path),
+        outline_2d=coords_mm,
+        plane_2d=None,
+        frame_size_mm=frame_size_mm,
+        label="Soundboard",
+        title=title,
+        dpi=dpi,
+        markers=shifted_markers,
+    )
+    return Path(output_path)
+
+
 def save_plane_projection_png(
     output_path: str | Path,
     outline_pair: Sequence[np.ndarray],
@@ -289,12 +515,6 @@ def save_plane_projection_png(
 
     Returns (left_path, right_path); the left panel corresponds to the first
     outline in `outline_pair`, which is the lower-index rib outline."""
-
-    MM_PER_INCH = 25.4
-    GRID_MM = 50.0
-    MIN_PANEL_IN = 2.0
-    LABEL_CLEARANCE_MM = 2.0
-    LABEL_OFFSET_FRAC = 0.15
 
     path = Path(output_path)
 
@@ -343,107 +563,15 @@ def save_plane_projection_png(
         coords_outline = proj.plane_outline_2d + np.array([shift_x, shift_y])
         plane_coords = proj.plane_corners_2d + np.array([shift_x, shift_y])
 
-        width_in = frame_size_mm[0] / MM_PER_INCH
-        height_in = frame_size_mm[1] / MM_PER_INCH
-        fig, ax = plt.subplots(figsize=(width_in, height_in))
-
-        poly = plt.Polygon(
-            plane_coords,
-            closed=True,
-            facecolor="none",
-            edgecolor="#8a6b2f",
-            linewidth=0.4,
+        _draw_projection_panel(
+            side_path,
+            outline_2d=coords_outline,
+            plane_2d=plane_coords,
+            frame_size_mm=frame_size_mm,
+            label=panel_label,
+            title=title,
+            dpi=dpi,
         )
-        ax.add_patch(poly)
-        ax.plot(coords_outline[:, 0], coords_outline[:, 1], color="#224466", lw=0.35)
-
-        xlim = (0.0, frame_size_mm[0])
-        ylim = (0.0, frame_size_mm[1])
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_aspect("equal", adjustable="box")
-
-        # 5 cm grid (50 mm)
-        x_ticks = np.arange(
-            0.0,
-            math.ceil(xlim[1] / GRID_MM) * GRID_MM + GRID_MM,
-            GRID_MM,
-        )
-        y_ticks = np.arange(
-            0.0,
-            math.ceil(ylim[1] / GRID_MM) * GRID_MM + GRID_MM,
-            GRID_MM,
-        )
-        ax.set_xticks(x_ticks)
-        ax.set_yticks(y_ticks)
-        ax.grid(True, which="major", linestyle="--", color="0.85", linewidth=0.4)
-        ax.tick_params(labelbottom=False, labelleft=False, length=0)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-        # Place panel label away from outlines and grid centers
-        span_x = xlim[1] - xlim[0]
-        span_y = ylim[1] - ylim[0]
-        outline_bb = (
-            coords_outline[:, 0].min(),
-            coords_outline[:, 0].max(),
-            coords_outline[:, 1].min(),
-            coords_outline[:, 1].max(),
-        )
-        candidates = [
-            (xlim[0] + 0.08 * span_x, ylim[1] - 0.08 * span_y),
-            (xlim[0] + 0.08 * span_x, ylim[0] + 0.08 * span_y),
-            (xlim[0] + 0.5 * span_x, ylim[0] + 0.08 * span_y),
-        ]
-
-        def _in_outline(pt):
-            x, y = pt
-            return outline_bb[0] <= x <= outline_bb[1] and outline_bb[2] <= y <= outline_bb[3]
-
-        label_pos = next((pt for pt in candidates if not _in_outline(pt)), candidates[-1])
-        ax.text(
-            label_pos[0],
-            label_pos[1],
-            panel_label,
-            ha="left",
-            va="center",
-            fontsize=10,
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.7, "pad": 2.0},
-        )
-
-        # Repeat annotation inside each grid square, tucked near corners
-        for x0, x1 in zip(x_ticks[:-1], x_ticks[1:], strict=False):
-            for y0, y1 in zip(y_ticks[:-1], y_ticks[1:], strict=False):
-                span_x = x1 - x0
-                span_y = y1 - y0
-                if span_x < GRID_MM - 1e-6 or span_y < GRID_MM - 1e-6:
-                    continue
-                candidates_cell = [
-                    (x0 + LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
-                    (x0 + LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
-                    (x1 - LABEL_OFFSET_FRAC * span_x, y0 + LABEL_OFFSET_FRAC * span_y),
-                    (x1 - LABEL_OFFSET_FRAC * span_x, y1 - LABEL_OFFSET_FRAC * span_y),
-                ]
-                for pt in candidates_cell:
-                    if _min_distance_to_polyline(pt, coords_outline) >= LABEL_CLEARANCE_MM:
-                        ax.text(
-                            pt[0],
-                            pt[1],
-                            panel_label,
-                            ha="left",
-                            va="center",
-                            fontsize=7,
-                            color="0.25",
-                            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.6, "pad": 1.5},
-                        )
-                        break
-
-        if title:
-            ax.set_title(title, fontsize=11, pad=6)
-
-        fig.tight_layout()
-        fig.savefig(side_path, dpi=dpi)
-        plt.close(fig)
 
     return paths
 
@@ -485,6 +613,8 @@ __all__ = [
     "plot_rib_surfaces",
     "plot_rib_surface_with_planes",
     "save_plane_projection_png",
+    "save_outline_projection_png",
+    "ProjectionMarker",
     "build_panel_projections",
     "compute_panel_frame",
     "PanelProjection",
